@@ -144,5 +144,8 @@ jobs:
             npm publish "${dir}" --access public --provenance || true
           done
 
+      - name: Configure git to use HTTPS instead of SSH
+        run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+
       - name: Publish main package
-        run: npm publish npm/axi-mcp-proxy --access public --provenance --no-git-checks
+        run: npm publish npm/axi-mcp-proxy --access public --provenance
