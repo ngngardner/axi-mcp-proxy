@@ -224,6 +224,35 @@ mod tests {
     }
 
     #[test]
+    fn test_pick_dotted_produces_flat_tabular_data() {
+        // Regression: nested objects prevent TOON tabular encoding.
+        // Dotted picks must flatten to primitives so the result is tabular.
+        let data = json!([
+            {"number": 1, "user": {"login": "alice", "id": 10}},
+            {"number": 2, "user": {"login": "bob", "id": 20}},
+        ]);
+        let t = Some(TransformConfig {
+            pick: Some(vec!["number".into(), "user.login".into()]),
+            rename: None,
+            filter: None,
+        });
+        let result = apply_transform(data, &t).unwrap();
+        // Every value should be a primitive (no nested objects/arrays)
+        for item in result.as_array().unwrap() {
+            for (_k, v) in item.as_object().unwrap() {
+                assert!(
+                    !v.is_object() && !v.is_array(),
+                    "dotted pick should produce flat values, got: {v}"
+                );
+            }
+        }
+        assert_eq!(
+            result,
+            json!([{"number": 1, "login": "alice"}, {"number": 2, "login": "bob"}])
+        );
+    }
+
+    #[test]
     fn test_pick_non_map() {
         assert_eq!(apply_pick(json!(42), &["a".into()]), json!(42));
     }

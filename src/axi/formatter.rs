@@ -166,4 +166,35 @@ mod tests {
         assert!(output.contains("[2]{id}:"));
         assert!(output.contains("→ detail <id>"));
     }
+
+    #[test]
+    fn test_max_items_truncates_output() {
+        let mut cfg = minimal_tool();
+        cfg.max_items = 3;
+        // 5 items, but max_items=3 should truncate
+        let results: HashMap<String, Value> = [(
+            "s1".into(),
+            json!([{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}, {"id": 5}]),
+        )]
+        .into();
+        let output = format(&cfg, &results).unwrap();
+        // Aggregate should still reflect the full count (5)
+        assert!(output.contains("5 results"));
+        // But the TOON body should only have 3 rows
+        assert!(output.contains("[3]{id}:"));
+        // Rows for id=4 and id=5 should not appear in the body
+        let body = output.split("\n\n").nth(1).unwrap();
+        assert!(!body.contains("4"));
+        assert!(!body.contains("5"));
+    }
+
+    #[test]
+    fn test_max_items_no_truncation_when_under_limit() {
+        let mut cfg = minimal_tool();
+        cfg.max_items = 10;
+        let results: HashMap<String, Value> =
+            [("s1".into(), json!([{"id": 1}, {"id": 2}]))].into();
+        let output = format(&cfg, &results).unwrap();
+        assert!(output.contains("[2]{id}:"));
+    }
 }
