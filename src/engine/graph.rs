@@ -15,7 +15,10 @@ pub fn build_layers(steps: &[StepConfig]) -> Result<Vec<Vec<&StepConfig>>> {
             if placed.contains(step.name.as_str()) {
                 continue;
             }
-            let ready = step.depends_on.iter().all(|dep| placed.contains(dep.as_str()));
+            let ready = step
+                .depends_on
+                .iter()
+                .all(|dep| placed.contains(dep.as_str()));
             if ready {
                 layer.push(step);
             }
@@ -67,11 +70,7 @@ mod tests {
 
     #[test]
     fn test_parallel_with_shared_dependency() {
-        let steps = vec![
-            step("a", &[]),
-            step("b", &["a"]),
-            step("c", &["a"]),
-        ];
+        let steps = vec![step("a", &[]), step("b", &["a"]), step("c", &["a"])];
         let layers = build_layers(&steps).unwrap();
         assert_eq!(layers.len(), 2);
         assert_eq!(layers[0].len(), 1);

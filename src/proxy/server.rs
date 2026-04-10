@@ -1,21 +1,17 @@
+use rmcp::Error as McpError;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
     CallToolRequestParam, CallToolResult, Content, Implementation, ListToolsResult,
-    PaginatedRequestParam, ServerCapabilities, ServerInfo, Tool,
-    ToolsCapability,
+    PaginatedRequestParam, ServerCapabilities, ServerInfo, Tool, ToolsCapability,
 };
 use rmcp::service::{RequestContext, RoleServer};
-use rmcp::Error as McpError;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::axi::{formatter, help};
 use crate::config::Config;
-use crate::engine::{
-    graph, resolve,
-    transform::apply_transform,
-};
+use crate::engine::{graph, resolve, transform::apply_transform};
 use crate::toon;
 use crate::upstream::pool::Pool;
 
@@ -42,9 +38,7 @@ impl ServerHandler for ProxyServer {
         ServerInfo {
             protocol_version: Default::default(),
             capabilities: ServerCapabilities {
-                tools: Some(ToolsCapability {
-                    list_changed: None,
-                }),
+                tools: Some(ToolsCapability { list_changed: None }),
                 ..Default::default()
             },
             server_info: Implementation {
@@ -100,9 +94,9 @@ impl ServerHandler for ProxyServer {
 
         // Check for help parameter
         if let Some(Value::Bool(true)) = args.get("help") {
-            return Ok(CallToolResult::success(vec![Content::text(
-                help::help(tool_cfg),
-            )]));
+            return Ok(CallToolResult::success(vec![Content::text(help::help(
+                tool_cfg,
+            ))]));
         }
 
         // Build params from args
@@ -132,8 +126,7 @@ impl ProxyServer {
         for layer in layers {
             let mut handles = Vec::new();
             for step in layer {
-                let resolved_args =
-                    resolve::resolve_args(&step.args, params, &results)?;
+                let resolved_args = resolve::resolve_args(&step.args, params, &results)?;
 
                 let pool = Arc::clone(&self.pool);
                 let upstream = step.upstream.clone();
@@ -142,9 +135,7 @@ impl ProxyServer {
                 let step_name = step.name.clone();
 
                 handles.push(tokio::spawn(async move {
-                    let call_result = pool
-                        .call_tool(&upstream, &tool, resolved_args)
-                        .await?;
+                    let call_result = pool.call_tool(&upstream, &tool, resolved_args).await?;
                     let data = extract_result_data(&call_result);
                     let data = apply_transform(data, &transform)?;
                     Ok::<_, anyhow::Error>((step_name, data))
@@ -266,8 +257,7 @@ fn build_tool_schemas(config: &Config) -> Vec<Tool> {
             "required": required,
         });
 
-        let schema_obj: serde_json::Map<String, Value> =
-            serde_json::from_value(schema).unwrap();
+        let schema_obj: serde_json::Map<String, Value> = serde_json::from_value(schema).unwrap();
 
         tools.push(Tool::new(
             name.clone(),

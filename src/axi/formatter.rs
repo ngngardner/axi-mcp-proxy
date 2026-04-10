@@ -159,8 +159,7 @@ mod tests {
     #[test]
     fn test_non_empty_results() {
         let cfg = minimal_tool();
-        let results: HashMap<String, Value> =
-            [("s1".into(), json!([{"id": 1}, {"id": 2}]))].into();
+        let results: HashMap<String, Value> = [("s1".into(), json!([{"id": 1}, {"id": 2}]))].into();
         let output = format(&cfg, &results).unwrap();
         assert!(output.contains("2 results"));
         assert!(output.contains("[2]{id}:"));
@@ -192,8 +191,7 @@ mod tests {
     fn test_max_items_no_truncation_when_under_limit() {
         let mut cfg = minimal_tool();
         cfg.max_items = 10;
-        let results: HashMap<String, Value> =
-            [("s1".into(), json!([{"id": 1}, {"id": 2}]))].into();
+        let results: HashMap<String, Value> = [("s1".into(), json!([{"id": 1}, {"id": 2}]))].into();
         let output = format(&cfg, &results).unwrap();
         assert!(output.contains("[2]{id}:"));
     }

@@ -2,8 +2,8 @@ use anyhow::Result;
 use rmcp::model::{CallToolResult, Tool};
 use std::collections::HashMap;
 
-use crate::config::UpstreamConfig;
 use super::client::Client;
+use crate::config::UpstreamConfig;
 
 pub struct Pool {
     clients: HashMap<String, Client>,

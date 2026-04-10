@@ -6,15 +6,16 @@ on:
   pull_request:
 
 jobs:
-  test:
+  pre-commit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - uses: oven-sh/setup-bun@v2
       - run: bun install
-      - run: cargo clippy -- -D warnings
-      - run: cargo test
+      - uses: j178/prek-action@v2
+        with:
+          extra-args: --all-files

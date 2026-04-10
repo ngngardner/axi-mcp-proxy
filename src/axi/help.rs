@@ -16,8 +16,12 @@ pub fn help(cfg: &ToolConfig) -> String {
         writeln!(buf, "\nParameters:").unwrap();
         for p in &cfg.parameters {
             let required = if p.required { " (required)" } else { "" };
-            writeln!(buf, "  {} ({}): {}{}", p.name, p.param_type, p.description, required)
-                .unwrap();
+            writeln!(
+                buf,
+                "  {} ({}): {}{}",
+                p.name, p.param_type, p.description, required
+            )
+            .unwrap();
         }
     }
 

@@ -7,7 +7,10 @@ use crate::engine::resolve::traverse_path;
 /// Evaluate an aggregate expression against step results.
 /// Supports: count($step.X), sum($step.X.field), $step.X.Y (direct ref)
 pub fn eval_aggregate(expr: &str, results: &HashMap<String, Value>) -> Result<Value> {
-    if let Some(inner) = expr.strip_prefix("count(").and_then(|s| s.strip_suffix(')')) {
+    if let Some(inner) = expr
+        .strip_prefix("count(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         let val = resolve_ref(inner, results)?;
         let count = match &val {
             Value::Array(arr) => arr.len(),
@@ -19,11 +22,7 @@ pub fn eval_aggregate(expr: &str, results: &HashMap<String, Value>) -> Result<Va
     if let Some(inner) = expr.strip_prefix("sum(").and_then(|s| s.strip_suffix(')')) {
         let val = resolve_ref(inner, results)?;
         let sum = match &val {
-            Value::Array(arr) => {
-                arr.iter()
-                    .filter_map(|item| item.as_f64())
-                    .sum::<f64>()
-            }
+            Value::Array(arr) => arr.iter().filter_map(|item| item.as_f64()).sum::<f64>(),
             _ => 0.0,
         };
         return Ok(serde_json::json!(sum));
@@ -50,40 +49,35 @@ mod tests {
 
     #[test]
     fn test_count() {
-        let results: HashMap<String, Value> =
-            [("items".to_string(), json!([1, 2, 3]))].into();
+        let results: HashMap<String, Value> = [("items".to_string(), json!([1, 2, 3]))].into();
         let val = eval_aggregate("count($step.items)", &results).unwrap();
         assert_eq!(val, json!(3));
     }
 
     #[test]
     fn test_count_non_array() {
-        let results: HashMap<String, Value> =
-            [("x".to_string(), json!("not an array"))].into();
+        let results: HashMap<String, Value> = [("x".to_string(), json!("not an array"))].into();
         let val = eval_aggregate("count($step.x)", &results).unwrap();
         assert_eq!(val, json!(0));
     }
 
     #[test]
     fn test_sum() {
-        let results: HashMap<String, Value> =
-            [("nums".to_string(), json!([1.0, 2.5, 3.5]))].into();
+        let results: HashMap<String, Value> = [("nums".to_string(), json!([1.0, 2.5, 3.5]))].into();
         let val = eval_aggregate("sum($step.nums)", &results).unwrap();
         assert_eq!(val, json!(7.0));
     }
 
     #[test]
     fn test_sum_non_array() {
-        let results: HashMap<String, Value> =
-            [("x".to_string(), json!("not an array"))].into();
+        let results: HashMap<String, Value> = [("x".to_string(), json!("not an array"))].into();
         let val = eval_aggregate("sum($step.x)", &results).unwrap();
         assert_eq!(val, json!(0.0));
     }
 
     #[test]
     fn test_direct_ref() {
-        let results: HashMap<String, Value> =
-            [("s1".to_string(), json!({"status": "ok"}))].into();
+        let results: HashMap<String, Value> = [("s1".to_string(), json!({"status": "ok"}))].into();
         let val = eval_aggregate("$step.s1.status", &results).unwrap();
         assert_eq!(val, json!("ok"));
     }
@@ -93,7 +87,12 @@ mod tests {
         let results = HashMap::new();
         let result = eval_aggregate("bad_expr", &results);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unknown aggregate"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown aggregate")
+        );
     }
 
     #[test]

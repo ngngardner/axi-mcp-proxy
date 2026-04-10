@@ -1,9 +1,7 @@
 use anyhow::{Context, Result, bail};
-use rmcp::model::{
-    CallToolRequestParam, CallToolResult, ClientCapabilities, Implementation, Tool,
-};
-use rmcp::service::RunningService;
 use rmcp::ServiceExt;
+use rmcp::model::{CallToolRequestParam, CallToolResult, ClientCapabilities, Implementation, Tool};
+use rmcp::service::RunningService;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use tokio::sync::OnceCell;
@@ -103,7 +101,9 @@ fn build_http_client(auth: &AuthConfig) -> Result<reqwest::Client> {
             if let Some(ref token) = auth.token {
                 headers.insert(
                     reqwest::header::AUTHORIZATION,
-                    format!("Bearer {token}").parse().context("invalid bearer token")?,
+                    format!("Bearer {token}")
+                        .parse()
+                        .context("invalid bearer token")?,
                 );
             }
         }
@@ -113,7 +113,9 @@ fn build_http_client(auth: &AuthConfig) -> Result<reqwest::Client> {
                 let encoded = base64::engine::general_purpose::STANDARD.encode(token.as_bytes());
                 headers.insert(
                     reqwest::header::AUTHORIZATION,
-                    format!("Basic {encoded}").parse().context("invalid basic token")?,
+                    format!("Basic {encoded}")
+                        .parse()
+                        .context("invalid basic token")?,
                 );
             }
         }

@@ -24,12 +24,8 @@ pub fn load(path: &Path) -> Result<Config> {
         .parent()
         .context("config file has no parent directory")?;
 
-    let mut prog = Program::<CacheImpl>::new_from_file(
-        path,
-        std::io::stderr(),
-        NullReporter {},
-    )
-    .context("failed to load nickel program")?;
+    let mut prog = Program::<CacheImpl>::new_from_file(path, std::io::stderr(), NullReporter {})
+        .context("failed to load nickel program")?;
 
     // Write bundled axi.ncl to a temp dir so `import "axi.ncl"` resolves
     // for users who don't have lib/ locally (e.g. running via bunx).
@@ -39,12 +35,11 @@ pub fn load(path: &Path) -> Result<Config> {
 
     prog.add_import_paths([import_dir.to_path_buf(), lib_dir].into_iter());
 
-    let value = prog.eval_full_for_export().map_err(|err| {
-        anyhow::anyhow!("nickel evaluation failed: {err:?}")
-    })?;
+    let value = prog
+        .eval_full_for_export()
+        .map_err(|err| anyhow::anyhow!("nickel evaluation failed: {err:?}"))?;
 
-    let mut config: Config =
-        Config::deserialize(value).context("failed to deserialize config")?;
+    let mut config: Config = Config::deserialize(value).context("failed to deserialize config")?;
 
     resolve_env_vars(&mut config);
     validate(&config)?;
@@ -104,8 +99,7 @@ fn validate(config: &Config) -> Result<()> {
             }
         }
 
-        check_cycles(&tool.steps)
-            .with_context(|| format!("tool {tool_name:?}"))?;
+        check_cycles(&tool.steps).with_context(|| format!("tool {tool_name:?}"))?;
     }
 
     Ok(())
@@ -118,11 +112,7 @@ fn check_cycles(steps: &[super::types::StepConfig]) -> Result<()> {
     for step in steps {
         for dep in &step.depends_on {
             if !names.contains(dep.as_str()) {
-                bail!(
-                    "step {:?} depends on unknown step {:?}",
-                    step.name,
-                    dep
-                );
+                bail!("step {:?} depends on unknown step {:?}", step.name, dep);
             }
             deps.entry(step.name.as_str())
                 .or_default()
@@ -137,10 +127,8 @@ fn check_cycles(steps: &[super::types::StepConfig]) -> Result<()> {
         Black,
     }
 
-    let mut color: std::collections::HashMap<&str, Color> = names
-        .iter()
-        .map(|&n| (n, Color::White))
-        .collect();
+    let mut color: std::collections::HashMap<&str, Color> =
+        names.iter().map(|&n| (n, Color::White)).collect();
 
     fn visit<'a>(
         name: &'a str,
@@ -187,10 +175,9 @@ mod tests {
     }
 
     fn write_axi_ncl(dir: &Path) {
-        let axi_content = std::fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("lib/axi.ncl"),
-        )
-        .unwrap();
+        let axi_content =
+            std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("lib/axi.ncl"))
+                .unwrap();
         write_ncl(dir, "axi.ncl", &axi_content);
     }
 
@@ -246,7 +233,12 @@ let axi = import "axi.ncl" in
     fn test_load_rejects_json() {
         let result = load(Path::new("config.json"));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unsupported config format"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unsupported config format")
+        );
     }
 
     #[test]
@@ -388,7 +380,12 @@ let axi = import "axi.ncl" in
         };
         let result = validate(&config);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("must set either url or cmd"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("must set either url or cmd")
+        );
     }
 
     #[test]
@@ -407,7 +404,12 @@ let axi = import "axi.ncl" in
         };
         let result = validate(&config);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("mutually exclusive"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("mutually exclusive")
+        );
     }
 
     #[test]

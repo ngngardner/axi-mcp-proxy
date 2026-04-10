@@ -71,7 +71,8 @@ pub fn traverse_path(path: &str, data: &HashMap<String, Value>) -> Result<Value>
         None => Ok(val.clone()),
         Some(remaining) => match val {
             Value::Object(m) => {
-                let map: HashMap<String, Value> = m.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                let map: HashMap<String, Value> =
+                    m.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 traverse_path(remaining, &map)
             }
             _ => bail!("cannot traverse into non-object at {first:?}"),
@@ -97,8 +98,7 @@ mod tests {
     fn test_step_ref() {
         let args: HashMap<String, Value> = [("id".to_string(), json!("$step.s1.id"))].into();
         let params = HashMap::new();
-        let results: HashMap<String, Value> =
-            [("s1".to_string(), json!({"id": 42}))].into();
+        let results: HashMap<String, Value> = [("s1".to_string(), json!({"id": 42}))].into();
         let resolved = resolve_args(&args, &params, &results).unwrap();
         assert_eq!(resolved["id"], json!(42));
     }
@@ -110,7 +110,12 @@ mod tests {
         let results = HashMap::new();
         let result = resolve_args(&args, &params, &results);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unknown parameter"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown parameter")
+        );
     }
 
     #[test]

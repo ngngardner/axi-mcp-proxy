@@ -4,7 +4,11 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "axi-mcp-proxy", version, about = "Composing MCP proxy with Axi design principles")]
+#[command(
+    name = "axi-mcp-proxy",
+    version,
+    about = "Composing MCP proxy with Axi design principles"
+)]
 struct Cli {
     /// Path to .ncl config file
     #[arg(long)]

@@ -5,8 +5,7 @@ use std::sync::LazyLock;
 
 static NUMERIC_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$").unwrap());
-static LEADING_ZERO_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^0\d+$").unwrap());
+static LEADING_ZERO_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^0\d+$").unwrap());
 static KEY_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_.]*$").unwrap());
 
@@ -157,13 +156,25 @@ fn encode_list_item(buf: &mut String, v: &Value, depth: usize) {
                     encode_array(buf, "", &format_key(first_key), arr, depth + 1);
                 }
                 _ => {
-                    write!(buf, "{}: {}", format_key(first_key), format_scalar(first_val)).unwrap();
+                    write!(
+                        buf,
+                        "{}: {}",
+                        format_key(first_key),
+                        format_scalar(first_val)
+                    )
+                    .unwrap();
                 }
             }
             for k in &keys[1..] {
                 buf.push('\n');
                 let child_indent = "  ".repeat(depth + 1);
-                encode_field(buf, &child_indent, &format_key(k), &m[k.as_str()], depth + 1);
+                encode_field(
+                    buf,
+                    &child_indent,
+                    &format_key(k),
+                    &m[k.as_str()],
+                    depth + 1,
+                );
             }
         }
         Value::Array(arr) => {
@@ -316,7 +327,10 @@ mod tests {
 
     #[test]
     fn test_primitive_array() {
-        test_encode(r#"{"tags":["admin","ops","dev"]}"#, "tags[3]: admin,ops,dev");
+        test_encode(
+            r#"{"tags":["admin","ops","dev"]}"#,
+            "tags[3]: admin,ops,dev",
+        );
     }
 
     #[test]
@@ -410,8 +424,7 @@ mod tests {
 
     #[test]
     fn test_list_item_nested_object_first_field() {
-        let v: Value =
-            serde_json::from_str(r#"{"items":[{"meta":{"x":1},"name":"a"}]}"#).unwrap();
+        let v: Value = serde_json::from_str(r#"{"items":[{"meta":{"x":1},"name":"a"}]}"#).unwrap();
         let got = encode(&v);
         assert!(got.contains("items[1]:"), "got:\n{got}");
         assert!(got.contains("- meta:"), "got:\n{got}");
@@ -420,8 +433,7 @@ mod tests {
 
     #[test]
     fn test_list_item_array_first_field() {
-        let v: Value =
-            serde_json::from_str(r#"{"items":[{"arr":[1,2],"name":"a"}]}"#).unwrap();
+        let v: Value = serde_json::from_str(r#"{"items":[{"arr":[1,2],"name":"a"}]}"#).unwrap();
         let got = encode(&v);
         assert!(got.contains("- arr[2]: 1,2"), "got:\n{got}");
     }
@@ -436,16 +448,14 @@ mod tests {
 
     #[test]
     fn test_list_item_empty_nested_object() {
-        let v: Value =
-            serde_json::from_str(r#"{"items":[{"meta":{},"name":"a"}]}"#).unwrap();
+        let v: Value = serde_json::from_str(r#"{"items":[{"meta":{},"name":"a"}]}"#).unwrap();
         let got = encode(&v);
         assert!(got.contains("- meta:"), "got:\n{got}");
     }
 
     #[test]
     fn test_list_item_primitive() {
-        let v: Value =
-            serde_json::from_str(r#"{"items":[{"a":1},42,"hello"]}"#).unwrap();
+        let v: Value = serde_json::from_str(r#"{"items":[{"a":1},42,"hello"]}"#).unwrap();
         let got = encode(&v);
         assert!(got.contains("- a: 1"), "got:\n{got}");
         assert!(got.contains("- 42"), "got:\n{got}");

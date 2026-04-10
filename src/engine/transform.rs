@@ -55,11 +55,11 @@ fn apply_pick(data: Value, fields: &[String]) -> Value {
     for f in fields {
         if let Some((head, tail)) = f.split_once('.') {
             // Dotted path: "user.login" → pick m["user"]["login"], insert as "login"
-            if let Some(parent) = m.get(head) {
-                if let Some(v) = resolve_path(parent, tail) {
-                    let leaf = f.rsplit('.').next().unwrap_or(f);
-                    picked.insert(leaf.to_string(), v);
-                }
+            if let Some(parent) = m.get(head)
+                && let Some(v) = resolve_path(parent, tail)
+            {
+                let leaf = f.rsplit('.').next().unwrap_or(f);
+                picked.insert(leaf.to_string(), v);
             }
         } else if let Some(v) = m.get(f) {
             picked.insert(f.clone(), v.clone());
@@ -69,7 +69,7 @@ fn apply_pick(data: Value, fields: &[String]) -> Value {
 }
 
 /// Resolve a dotted path like "a.b.c" into a nested Value.
-fn resolve_path<'a>(val: &'a Value, path: &str) -> Option<Value> {
+fn resolve_path(val: &Value, path: &str) -> Option<Value> {
     let mut current = val;
     for segment in path.split('.') {
         current = current.as_object()?.get(segment)?;
@@ -137,14 +137,18 @@ mod tests {
 
     #[test]
     fn test_pick_on_array() {
-        let data = json!([{"id": 1, "name": "a", "extra": true}, {"id": 2, "name": "b", "extra": false}]);
+        let data =
+            json!([{"id": 1, "name": "a", "extra": true}, {"id": 2, "name": "b", "extra": false}]);
         let t = Some(TransformConfig {
             pick: Some(vec!["id".into(), "name".into()]),
             rename: None,
             filter: None,
         });
         let result = apply_transform(data, &t).unwrap();
-        assert_eq!(result, json!([{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]));
+        assert_eq!(
+            result,
+            json!([{"id": 1, "name": "a"}, {"id": 2, "name": "b"}])
+        );
     }
 
     #[test]
