@@ -18,12 +18,38 @@ Raw MCP tool output is verbose JSON that burns through agent context windows. Ax
 
 ## Quick start
 
+Run via npx/bunx (no build required):
+
+```bash
+npx axi-mcp-proxy --config config.ncl
+```
+
+Or build from source:
+
 ```bash
 cargo build --release
 ./target/release/axi-mcp-proxy --config config.ncl
 ```
 
-Nickel configs (`.ncl`) are validated against Axi contracts at eval time. The Nickel evaluator is linked in-process via `nickel-lang-core`.
+Nickel configs (`.ncl`) are validated against Axi contracts at eval time. The Nickel evaluator is linked in-process via `nickel-lang-core`. The `axi.ncl` contracts are embedded in the binary, so `import "axi.ncl"` works everywhere.
+
+### Use with Claude Code
+
+Add a `.mcp.json` to your project root:
+
+```json
+{
+  "mcpServers": {
+    "my-proxy": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["axi-mcp-proxy", "--config", "my-config.ncl", "--transport", "stdio"]
+    }
+  }
+}
+```
+
+Then restart Claude Code — your composite tools will appear alongside built-in tools.
 
 ## Example
 
@@ -34,8 +60,8 @@ let axi = import "axi.ncl" in
 {
   upstreams = {
     github = {
-      url = "http://localhost:3000/sse",
-      auth = { type = "bearer", token = "${GITHUB_TOKEN}" },
+      cmd = "gh",
+      args = ["mcp"],
     },
   },
   tools = {
