@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            use_cross: false
+            binary: axi-mcp-proxy
+          - platform: linux-arm64
+            runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            use_cross: true
+            binary: axi-mcp-proxy
+          - platform: darwin-x64
+            runner: macos-13
+            target: x86_64-apple-darwin
+            use_cross: false
+            binary: axi-mcp-proxy
+          - platform: darwin-arm64
+            runner: macos-14
+            target: aarch64-apple-darwin
+            use_cross: false
+            binary: axi-mcp-proxy
+          - platform: win32-x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            use_cross: false
+            binary: axi-mcp-proxy.exe
+          - platform: win32-arm64
+            runner: windows-latest
+            target: aarch64-pc-windows-msvc
+            use_cross: false
+            binary: axi-mcp-proxy.exe
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.platform }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.platform }}
+          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Set version and copy binaries
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Publishing version ${VERSION}"
+
+          # Platform packages: set version and copy binary
+          declare -A BINS=(
+            [linux-x64]=axi-mcp-proxy
+            [linux-arm64]=axi-mcp-proxy
+            [darwin-x64]=axi-mcp-proxy
+            [darwin-arm64]=axi-mcp-proxy
+            [win32-x64]=axi-mcp-proxy.exe
+            [win32-arm64]=axi-mcp-proxy.exe
+          )
+
+          for platform in "${!BINS[@]}"; do
+            dir="npm/@axi-mcp-proxy/${platform}"
+            bin="${BINS[$platform]}"
+
+            # Set version
+            node -e "
+              const fs = require('fs');
+              const p = JSON.parse(fs.readFileSync('${dir}/package.json', 'utf8'));
+              p.version = '${VERSION}';
+              fs.writeFileSync('${dir}/package.json', JSON.stringify(p, null, 2) + '\n');
+            "
+
+            # Copy binary from artifact
+            cp "artifacts/binary-${platform}/${bin}" "${dir}/${bin}"
+            chmod +x "${dir}/${bin}"
+          done
+
+          # Main package: set version and update optionalDependencies
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('npm/axi-mcp-proxy/package.json', 'utf8'));
+            p.version = '${VERSION}';
+            for (const dep of Object.keys(p.optionalDependencies || {})) {
+              p.optionalDependencies[dep] = '${VERSION}';
+            }
+            fs.writeFileSync('npm/axi-mcp-proxy/package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for dir in npm/@axi-mcp-proxy/*/; do
+            echo "Publishing ${dir}..."
+            npm publish "${dir}" --access public
+          done
+
+      - name: Publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish npm/axi-mcp-proxy --access public

@@ -1,0 +1,9 @@
+{
+  "name": "@axi-mcp-proxy/win32-arm64",
+  "version": "0.0.0",
+  "description": "axi-mcp-proxy binary for Windows arm64",
+  "license": "MIT",
+  "os": ["win32"],
+  "cpu": ["arm64"],
+  "files": ["axi-mcp-proxy.exe"]
+}

@@ -1,3 +1,5 @@
 /target
 node_modules/
 bun.lock
+npm/@axi-mcp-proxy/*/axi-mcp-proxy
+npm/@axi-mcp-proxy/*/axi-mcp-proxy.exe

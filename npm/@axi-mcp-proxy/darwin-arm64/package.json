@@ -1,0 +1,9 @@
+{
+  "name": "@axi-mcp-proxy/darwin-arm64",
+  "version": "0.0.0",
+  "description": "axi-mcp-proxy binary for macOS arm64",
+  "license": "MIT",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": ["axi-mcp-proxy"]
+}

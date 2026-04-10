@@ -1,0 +1,9 @@
+{
+  "name": "@axi-mcp-proxy/linux-arm64",
+  "version": "0.0.0",
+  "description": "axi-mcp-proxy binary for linux arm64",
+  "license": "MIT",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": ["axi-mcp-proxy"]
+}
