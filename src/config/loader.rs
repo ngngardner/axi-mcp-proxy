@@ -20,7 +20,6 @@ pub fn load(path: &Path) -> Result<Config> {
         bail!("unsupported config format: {} (use .ncl)", path.display());
     }
 
-    // Set up import paths so `import "axi.ncl"` resolves relative to the config file
     let import_dir = path
         .parent()
         .context("config file has no parent directory")?;
@@ -32,7 +31,13 @@ pub fn load(path: &Path) -> Result<Config> {
     )
     .context("failed to load nickel program")?;
 
-    prog.add_import_paths(std::iter::once(import_dir.to_path_buf()));
+    // Write bundled axi.ncl to a temp dir so `import "axi.ncl"` resolves
+    // for users who don't have lib/ locally (e.g. running via bunx).
+    let lib_dir = std::env::temp_dir().join("axi-mcp-proxy-lib");
+    std::fs::create_dir_all(&lib_dir)?;
+    std::fs::write(lib_dir.join("axi.ncl"), include_str!("../../lib/axi.ncl"))?;
+
+    prog.add_import_paths([import_dir.to_path_buf(), lib_dir].into_iter());
 
     let value = prog.eval_full_for_export().map_err(|err| {
         anyhow::anyhow!("nickel evaluation failed: {err:?}")
