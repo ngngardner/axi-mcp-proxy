@@ -9,6 +9,10 @@ charset = utf-8
 [*.go]
 indent_style = tab
 
+[*.rs]
+indent_style = space
+indent_size = 4
+
 [*.{ncl,json,yaml,yml,toml,md}]
 indent_style = space
 indent_size = 2
