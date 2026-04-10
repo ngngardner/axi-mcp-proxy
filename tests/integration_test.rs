@@ -1,3 +1,15 @@
+// Integration tests — relaxed lints for test ergonomics. print_stderr used for
+// diagnostic output, too_many_lines for comprehensive scenario coverage.
+#![allow(
+    clippy::tests_outside_test_module,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::str_to_string,
+    clippy::default_trait_access,
+    clippy::print_stderr,
+    clippy::too_many_lines
+)]
+
 use axi_mcp_proxy::config::*;
 use axi_mcp_proxy::proxy::server::ProxyServer;
 use axi_mcp_proxy::upstream::pool::Pool;
@@ -89,10 +101,10 @@ impl ServerHandler for MockServer {
             .tools
             .iter()
             .find(|(t, _)| t.name == tool_name)
-            .map(|(_, handler)| handler(args.clone()))
-            .unwrap_or_else(|| {
-                CallToolResult::error(vec![Content::text(format!("unknown tool: {tool_name}"))])
-            });
+            .map_or_else(
+                || CallToolResult::error(vec![Content::text(format!("unknown tool: {tool_name}"))]),
+                |(_, handler)| handler(args.clone()),
+            );
         std::future::ready(Ok(result))
     }
 }
@@ -153,7 +165,7 @@ async fn call_proxy_tool(addr: SocketAddr, tool: &str, args: Value) -> (String, 
     let transport = rmcp::transport::SseTransport::start(format!("http://{addr}/sse"))
         .await
         .expect("connect to proxy");
-    let client_info = rmcp::model::ClientInfo {
+    let client_info = ClientInfo {
         protocol_version: Default::default(),
         capabilities: ClientCapabilities::default(),
         client_info: Implementation {
@@ -789,7 +801,7 @@ async fn test_list_upstream_tools() {
 // run_tool tests (--run-tool CLI mode, no MCP transport)
 // ---------------------------------------------------------------------------
 
-/// Helper: create a ProxyServer directly (no SSE transport needed)
+/// Helper: create a `ProxyServer` directly (no SSE transport needed)
 fn make_proxy(cfg: Config) -> ProxyServer {
     let pool = Pool::new(&cfg.upstreams);
     ProxyServer::new(cfg, pool)

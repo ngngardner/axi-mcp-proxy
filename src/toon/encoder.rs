@@ -3,19 +3,29 @@ use serde_json::Value;
 use std::fmt::Write;
 use std::sync::LazyLock;
 
+// Static regex compilation — pattern is a constant literal, expect cannot fail
+#[allow(clippy::expect_used)]
 static NUMERIC_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$").unwrap());
-static LEADING_ZERO_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^0\d+$").unwrap());
+    LazyLock::new(|| Regex::new(r"^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$").expect("valid regex"));
+// Static regex compilation — pattern is a constant literal, expect cannot fail
+#[allow(clippy::expect_used)]
+static LEADING_ZERO_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^0\d+$").expect("valid regex"));
+// Static regex compilation — pattern is a constant literal, expect cannot fail
+#[allow(clippy::expect_used)]
 static KEY_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_.]*$").unwrap());
+    LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_.]*$").expect("valid regex"));
 
-/// Encode a serde_json::Value to a TOON v3.0 string.
+/// Encode a `serde_json::Value` to a TOON v3.0 string.
+#[must_use]
 pub fn encode(v: &Value) -> String {
     let mut buf = String::new();
     match v {
         Value::Object(m) => encode_object(&mut buf, m, 0),
         Value::Array(arr) => encode_root_array(&mut buf, arr),
-        _ => buf.push_str(&format_scalar(v)),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+            buf.push_str(&format_scalar(v));
+        }
     }
     buf
 }
@@ -34,7 +44,8 @@ fn encode_object(buf: &mut String, m: &serde_json::Map<String, Value>, depth: us
 fn encode_field(buf: &mut String, indent: &str, key: &str, v: &Value, depth: usize) {
     match v {
         Value::Object(m) => {
-            write!(buf, "{indent}{key}:").unwrap();
+            // write! to String is infallible
+            let _ = write!(buf, "{indent}{key}:");
             if m.is_empty() {
                 return;
             }
@@ -44,8 +55,8 @@ fn encode_field(buf: &mut String, indent: &str, key: &str, v: &Value, depth: usi
         Value::Array(arr) => {
             encode_array(buf, indent, key, arr, depth);
         }
-        _ => {
-            write!(buf, "{indent}{key}: {}", format_scalar(v)).unwrap();
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+            let _ = write!(buf, "{indent}{key}: {}", format_scalar(v));
         }
     }
 }
@@ -56,7 +67,7 @@ fn encode_root_array(buf: &mut String, arr: &[Value]) {
         return;
     }
     if all_primitive(arr) {
-        write!(buf, "[{}]: ", arr.len()).unwrap();
+        let _ = write!(buf, "[{}]: ", arr.len());
         for (i, v) in arr.iter().enumerate() {
             if i > 0 {
                 buf.push(',');
@@ -66,10 +77,12 @@ fn encode_root_array(buf: &mut String, arr: &[Value]) {
         return;
     }
     if let Some(fields) = is_tabular(arr) {
-        write!(buf, "[{}]{{{}}}:", arr.len(), fields.join(",")).unwrap();
+        let _ = write!(buf, "[{}]{{{}}}:", arr.len(), fields.join(","));
         for item in arr {
             buf.push('\n');
-            let m = item.as_object().unwrap();
+            // is_tabular already verified all items are objects
+            #[allow(clippy::expect_used)]
+            let m = item.as_object().expect("tabular items are objects");
             buf.push_str("  ");
             for (j, f) in fields.iter().enumerate() {
                 if j > 0 {
@@ -80,7 +93,7 @@ fn encode_root_array(buf: &mut String, arr: &[Value]) {
         }
         return;
     }
-    write!(buf, "[{}]:", arr.len()).unwrap();
+    let _ = write!(buf, "[{}]:", arr.len());
     for item in arr {
         buf.push('\n');
         encode_list_item(buf, item, 1);
@@ -89,11 +102,11 @@ fn encode_root_array(buf: &mut String, arr: &[Value]) {
 
 fn encode_array(buf: &mut String, indent: &str, key: &str, arr: &[Value], depth: usize) {
     if arr.is_empty() {
-        write!(buf, "{indent}{key}[0]:").unwrap();
+        let _ = write!(buf, "{indent}{key}[0]:");
         return;
     }
     if all_primitive(arr) {
-        write!(buf, "{indent}{key}[{}]: ", arr.len()).unwrap();
+        let _ = write!(buf, "{indent}{key}[{}]: ", arr.len());
         for (i, v) in arr.iter().enumerate() {
             if i > 0 {
                 buf.push(',');
@@ -104,17 +117,18 @@ fn encode_array(buf: &mut String, indent: &str, key: &str, arr: &[Value], depth:
     }
     if let Some(fields) = is_tabular(arr) {
         let field_keys: Vec<String> = fields.iter().map(|f| format_key(f)).collect();
-        write!(
+        let _ = write!(
             buf,
             "{indent}{key}[{}]{{{}}}:",
             arr.len(),
             field_keys.join(",")
-        )
-        .unwrap();
+        );
         let child_indent = "  ".repeat(depth + 1);
         for item in arr {
             buf.push('\n');
-            let m = item.as_object().unwrap();
+            // is_tabular already verified all items are objects
+            #[allow(clippy::expect_used)]
+            let m = item.as_object().expect("tabular items are objects");
             buf.push_str(&child_indent);
             for (j, f) in fields.iter().enumerate() {
                 if j > 0 {
@@ -125,7 +139,7 @@ fn encode_array(buf: &mut String, indent: &str, key: &str, arr: &[Value], depth:
         }
         return;
     }
-    write!(buf, "{indent}{key}[{}]:", arr.len()).unwrap();
+    let _ = write!(buf, "{indent}{key}[{}]:", arr.len());
     for item in arr {
         buf.push('\n');
         encode_list_item(buf, item, depth + 1);
@@ -137,16 +151,16 @@ fn encode_list_item(buf: &mut String, v: &Value, depth: usize) {
     match v {
         Value::Object(m) => {
             if m.is_empty() {
-                write!(buf, "{indent}-").unwrap();
+                let _ = write!(buf, "{indent}-");
                 return;
             }
             let keys = ordered_keys(m);
-            write!(buf, "{indent}- ").unwrap();
+            let _ = write!(buf, "{indent}- ");
             let first_key = &keys[0];
             let first_val = &m[first_key.as_str()];
             match first_val {
                 Value::Object(fv) => {
-                    write!(buf, "{}:", format_key(first_key)).unwrap();
+                    let _ = write!(buf, "{}:", format_key(first_key));
                     if !fv.is_empty() {
                         buf.push('\n');
                         encode_object(buf, fv, depth + 2);
@@ -155,14 +169,13 @@ fn encode_list_item(buf: &mut String, v: &Value, depth: usize) {
                 Value::Array(arr) => {
                     encode_array(buf, "", &format_key(first_key), arr, depth + 1);
                 }
-                _ => {
-                    write!(
+                Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+                    let _ = write!(
                         buf,
                         "{}: {}",
                         format_key(first_key),
                         format_scalar(first_val)
-                    )
-                    .unwrap();
+                    );
                 }
             }
             for k in &keys[1..] {
@@ -178,11 +191,11 @@ fn encode_list_item(buf: &mut String, v: &Value, depth: usize) {
             }
         }
         Value::Array(arr) => {
-            write!(buf, "{indent}- ").unwrap();
+            let _ = write!(buf, "{indent}- ");
             encode_array(buf, "", "", arr, depth);
         }
-        _ => {
-            write!(buf, "{indent}- {}", format_scalar(v)).unwrap();
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+            let _ = write!(buf, "{indent}- {}", format_scalar(v));
         }
     }
 }
@@ -241,7 +254,7 @@ fn needs_quoting(s: &str) -> bool {
 
 fn format_key(k: &str) -> String {
     if KEY_PATTERN.is_match(k) {
-        k.to_string()
+        k.to_owned()
     } else {
         quote_string(k)
     }
@@ -266,20 +279,19 @@ fn quote_string(s: &str) -> String {
 
 fn format_scalar(v: &Value) -> String {
     match v {
-        Value::Null => "null".to_string(),
+        Value::Null => "null".to_owned(),
         Value::Bool(b) => b.to_string(),
         Value::Number(n) => {
             if let Some(f) = n.as_f64() {
                 if f.is_nan() || f.is_infinite() {
-                    return "null".to_string();
+                    return "null".to_owned();
                 }
+                // Zero-check on a finite f64 — no precision issue
+                #[allow(clippy::float_arithmetic, clippy::float_cmp)]
                 if f == 0.0 {
-                    return "0".to_string();
+                    return "0".to_owned();
                 }
-                // Format without exponent, strip trailing zeros
-                let s = format!("{}", f);
-                // Rust's Display for f64 already strips trailing zeros
-                s
+                format!("{f}")
             } else {
                 n.to_string()
             }
@@ -291,7 +303,7 @@ fn format_scalar(v: &Value) -> String {
                 s.clone()
             }
         }
-        _ => format!("{v}"),
+        Value::Array(_) | Value::Object(_) => format!("{v}"),
     }
 }
 
@@ -302,6 +314,8 @@ fn ordered_keys(m: &serde_json::Map<String, Value>) -> Vec<String> {
 }
 
 #[cfg(test)]
+// Tests use unwrap for brevity — panics are the desired failure mode
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use serde_json::json;

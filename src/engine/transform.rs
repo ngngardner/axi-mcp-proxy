@@ -4,25 +4,28 @@ use serde_json::Value;
 use crate::config::TransformConfig;
 
 /// Apply pick, rename, and filter operations to data.
+///
+/// # Errors
+///
+/// Currently infallible but returns `Result` for future extensibility.
 pub fn apply_transform(data: Value, t: &Option<TransformConfig>) -> Result<Value> {
-    let t = match t {
-        Some(t) => t,
-        None => return Ok(data),
+    let Some(transform) = t else {
+        return Ok(data);
     };
 
     if let Value::Array(arr) = data {
         let mut result = Vec::new();
         for item in arr {
-            if let Some(ref filter) = t.filter
+            if let Some(ref filter) = transform.filter
                 && !eval_filter(&item, filter)
             {
                 continue;
             }
             let mut transformed = item;
-            if let Some(ref pick) = t.pick {
+            if let Some(ref pick) = transform.pick {
                 transformed = apply_pick(transformed, pick);
             }
-            if let Some(ref rename) = t.rename {
+            if let Some(ref rename) = transform.rename {
                 transformed = apply_rename(transformed, rename);
             }
             result.push(transformed);
@@ -31,17 +34,17 @@ pub fn apply_transform(data: Value, t: &Option<TransformConfig>) -> Result<Value
     }
 
     // Single object
-    if let Some(ref filter) = t.filter
+    if let Some(ref filter) = transform.filter
         && !eval_filter(&data, filter)
     {
         return Ok(Value::Null);
     }
 
     let mut result = data;
-    if let Some(ref pick) = t.pick {
+    if let Some(ref pick) = transform.pick {
         result = apply_pick(result, pick);
     }
-    if let Some(ref rename) = t.rename {
+    if let Some(ref rename) = transform.rename {
         result = apply_rename(result, rename);
     }
     Ok(result)
@@ -59,7 +62,7 @@ fn apply_pick(data: Value, fields: &[String]) -> Value {
                 && let Some(v) = resolve_path(parent, tail)
             {
                 let leaf = f.rsplit('.').next().unwrap_or(f);
-                picked.insert(leaf.to_string(), v);
+                picked.insert(leaf.to_owned(), v);
             }
         } else if let Some(v) = m.get(f) {
             picked.insert(f.clone(), v.clone());
@@ -98,15 +101,11 @@ fn eval_filter(data: &Value, expr: &str) -> bool {
     if let Some((field, expected)) = parse_op(expr, "==") {
         return m
             .get(&field)
-            .map(|v| value_to_string(v) == expected)
-            .unwrap_or(false);
+            .is_some_and(|v| value_to_string(v) == expected);
     }
 
     if let Some((field, expected)) = parse_op(expr, "!=") {
-        return m
-            .get(&field)
-            .map(|v| value_to_string(v) != expected)
-            .unwrap_or(true);
+        return m.get(&field).is_none_or(|v| value_to_string(v) != expected);
     }
 
     true
@@ -114,8 +113,8 @@ fn eval_filter(data: &Value, expr: &str) -> bool {
 
 fn parse_op(expr: &str, op: &str) -> Option<(String, String)> {
     let (left, right) = expr.split_once(op)?;
-    let field = left.trim().to_string();
-    let expected = right.trim().trim_matches('"').to_string();
+    let field = left.trim().to_owned();
+    let expected = right.trim().trim_matches('"').to_owned();
     Some((field, expected))
 }
 
@@ -124,12 +123,14 @@ fn value_to_string(v: &Value) -> String {
         Value::String(s) => s.clone(),
         Value::Number(n) => n.to_string(),
         Value::Bool(b) => b.to_string(),
-        Value::Null => "null".to_string(),
-        other => other.to_string(),
+        Value::Null => "null".to_owned(),
+        other @ (Value::Array(_) | Value::Object(_)) => other.to_string(),
     }
 }
 
 #[cfg(test)]
+// Tests use unwrap/to_string for brevity — panics are the desired failure mode
+#[allow(clippy::unwrap_used, clippy::str_to_string)]
 mod tests {
     use super::*;
     use serde_json::json;

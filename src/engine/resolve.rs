@@ -3,6 +3,12 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 /// Replace `$param.X` and `$step.Y.Z` references in args.
+///
+/// # Errors
+///
+/// Returns an error if a referenced parameter or step is not found.
+// HashMap is only used internally — no need to be generic over the hasher
+#[allow(clippy::implicit_hasher)]
 pub fn resolve_args(
     args: &HashMap<String, Value>,
     params: &HashMap<String, Value>,
@@ -38,7 +44,7 @@ fn resolve_value(
             }
             Ok(Value::Array(resolved))
         }
-        _ => Ok(v.clone()),
+        Value::Null | Value::Bool(_) | Value::Number(_) => Ok(v.clone()),
     }
 }
 
@@ -56,9 +62,16 @@ fn resolve_string(
     if let Some(path) = s.strip_prefix("$step.") {
         return traverse_path(path, results);
     }
-    Ok(Value::String(s.to_string()))
+    Ok(Value::String(s.to_owned()))
 }
 
+/// Traverse a dotted path like `"step_name.field"` into a nested `Value`.
+///
+/// # Errors
+///
+/// Returns an error if a segment is not found or a non-object is encountered mid-path.
+// HashMap is only used internally — no need to be generic over the hasher
+#[allow(clippy::implicit_hasher)]
 pub fn traverse_path(path: &str, data: &HashMap<String, Value>) -> Result<Value> {
     let (first, rest) = match path.split_once('.') {
         Some((f, r)) => (f, Some(r)),
@@ -75,12 +88,18 @@ pub fn traverse_path(path: &str, data: &HashMap<String, Value>) -> Result<Value>
                     m.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 traverse_path(remaining, &map)
             }
-            _ => bail!("cannot traverse into non-object at {first:?}"),
+            Value::Null
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_)
+            | Value::Array(_) => bail!("cannot traverse into non-object at {first:?}"),
         },
     }
 }
 
 #[cfg(test)]
+// Tests use unwrap/to_string for brevity — panics are the desired failure mode
+#[allow(clippy::unwrap_used, clippy::str_to_string)]
 mod tests {
     use super::*;
     use serde_json::json;

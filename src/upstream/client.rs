@@ -1,9 +1,12 @@
-use anyhow::{Context, Result, bail};
-use rmcp::ServiceExt;
-use rmcp::model::{CallToolRequestParam, CallToolResult, ClientCapabilities, Implementation, Tool};
-use rmcp::service::RunningService;
 use std::borrow::Cow;
 use std::collections::HashMap;
+
+use anyhow::{Context, Result, bail};
+use rmcp::ServiceExt;
+use rmcp::model::{
+    CallToolRequestParam, CallToolResult, ClientCapabilities, Implementation, ProtocolVersion, Tool,
+};
+use rmcp::service::RunningService;
 use tokio::sync::OnceCell;
 
 use crate::config::{AuthConfig, UpstreamConfig};
@@ -16,6 +19,7 @@ pub struct Client {
 }
 
 impl Client {
+    #[must_use]
     pub fn new(config: UpstreamConfig) -> Self {
         Self {
             config,
@@ -25,7 +29,7 @@ impl Client {
 
     async fn connect(&self) -> Result<ClientService> {
         let client_info = rmcp::model::ClientInfo {
-            protocol_version: Default::default(),
+            protocol_version: ProtocolVersion::default(),
             capabilities: ClientCapabilities::default(),
             client_info: Implementation {
                 name: "axi-mcp-proxy".into(),
@@ -65,6 +69,11 @@ impl Client {
         self.service.get_or_try_init(|| self.connect()).await
     }
 
+    /// Call a tool on the upstream MCP server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the connection fails or the upstream rejects the call.
     pub async fn call_tool(
         &self,
         tool: &str,
@@ -73,7 +82,7 @@ impl Client {
         let service = self.get_service().await?;
         let arguments: serde_json::Map<String, serde_json::Value> = args.into_iter().collect();
         let param = CallToolRequestParam {
-            name: Cow::Owned(tool.to_string()),
+            name: Cow::Owned(tool.to_owned()),
             arguments: Some(arguments),
         };
         service
@@ -83,6 +92,11 @@ impl Client {
             .map_err(|e| anyhow::anyhow!("call_tool failed: {e}"))
     }
 
+    /// List all tools available on the upstream MCP server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the connection fails or the upstream rejects the request.
     pub async fn list_tools(&self) -> Result<Vec<Tool>> {
         let service = self.get_service().await?;
         service
@@ -90,6 +104,14 @@ impl Client {
             .list_all_tools()
             .await
             .map_err(|e| anyhow::anyhow!("list_tools failed: {e}"))
+    }
+}
+
+impl std::fmt::Debug for Client {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("config", &self.config)
+            .finish_non_exhaustive()
     }
 }
 

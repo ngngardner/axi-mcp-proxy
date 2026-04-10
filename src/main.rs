@@ -1,3 +1,6 @@
+// Binary entrypoint — stdout/stderr output is intentional for CLI
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
 use axi_mcp_proxy::{config, proxy, upstream};
 use clap::Parser;
 use std::net::SocketAddr;
@@ -41,9 +44,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Debug mode: run a single tool and exit
     if let Some(tool_name) = cli.run_tool {
-        let params: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&cli.params)
+        let parsed: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&cli.params)
             .map_err(|e| anyhow::anyhow!("invalid --params JSON: {e}"))?;
-        let params = params.into_iter().collect();
+        let params = parsed.into_iter().collect();
         match server.run_tool(&tool_name, &params).await {
             Ok(text) => {
                 println!("{text}");

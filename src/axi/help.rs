@@ -3,25 +3,26 @@ use std::fmt::Write;
 use crate::config::ToolConfig;
 
 /// Generate help text from a tool configuration.
+#[must_use]
 pub fn help(cfg: &ToolConfig) -> String {
     let mut buf = String::new();
 
-    writeln!(buf, "{}", cfg.description).unwrap();
+    // write! to String is infallible
+    let _ = writeln!(buf, "{}", cfg.description);
 
     if let Some(ref detailed) = cfg.detailed_help {
-        writeln!(buf, "\n{detailed}").unwrap();
+        let _ = writeln!(buf, "\n{detailed}");
     }
 
     if !cfg.parameters.is_empty() {
-        writeln!(buf, "\nParameters:").unwrap();
+        let _ = writeln!(buf, "\nParameters:");
         for p in &cfg.parameters {
             let required = if p.required { " (required)" } else { "" };
-            writeln!(
+            let _ = writeln!(
                 buf,
                 "  {} ({}): {}{}",
                 p.name, p.param_type, p.description, required
-            )
-            .unwrap();
+            );
         }
     }
 
@@ -31,9 +32,9 @@ pub fn help(cfg: &ToolConfig) -> String {
         .filter(|f| f.default_visible)
         .collect();
     if !visible.is_empty() {
-        writeln!(buf, "\nOutput fields:").unwrap();
+        let _ = writeln!(buf, "\nOutput fields:");
         for f in &visible {
-            writeln!(buf, "  {}: {}", f.name, f.description).unwrap();
+            let _ = writeln!(buf, "  {}: {}", f.name, f.description);
         }
     }
 
@@ -43,16 +44,16 @@ pub fn help(cfg: &ToolConfig) -> String {
         .filter(|f| !f.default_visible)
         .collect();
     if !hidden.is_empty() {
-        writeln!(buf, "\nHidden fields (use --full):").unwrap();
+        let _ = writeln!(buf, "\nHidden fields (use --full):");
         for f in &hidden {
-            writeln!(buf, "  {}: {}", f.name, f.description).unwrap();
+            let _ = writeln!(buf, "  {}: {}", f.name, f.description);
         }
     }
 
     if !cfg.aggregates.is_empty() {
-        writeln!(buf, "\nAggregates:").unwrap();
+        let _ = writeln!(buf, "\nAggregates:");
         for a in &cfg.aggregates {
-            writeln!(buf, "  {}: {}", a.label, a.value).unwrap();
+            let _ = writeln!(buf, "  {}: {}", a.label, a.value);
         }
     }
 

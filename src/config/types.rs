@@ -42,7 +42,7 @@ pub struct ToolConfig {
     pub max_items: u32,
 }
 
-fn default_max_items() -> u32 {
+const fn default_max_items() -> u32 {
     10
 }
 
@@ -84,7 +84,7 @@ pub struct OutputFieldConfig {
     pub default_visible: bool,
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 

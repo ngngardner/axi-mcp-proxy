@@ -8,6 +8,12 @@ use crate::engine::aggregate::eval_aggregate;
 use crate::toon;
 
 /// Assemble the final Axi output: summary line + TOON body + next steps.
+///
+/// # Errors
+///
+/// Returns an error if aggregate evaluation fails.
+// HashMap is only used internally — no need to be generic over the hasher
+#[allow(clippy::implicit_hasher)]
 pub fn format(cfg: &ToolConfig, results: &HashMap<String, Value>) -> Result<String> {
     let all_empty = results.values().all(is_empty);
     if all_empty {
@@ -63,7 +69,7 @@ fn build_body(cfg: &ToolConfig, results: &HashMap<String, Value>) -> String {
         if is_empty(data) {
             continue;
         }
-        let truncated = truncate_array(data, cfg.max_items as usize);
+        let truncated = truncate_array(data, cfg.max_items.try_into().unwrap_or(usize::MAX));
         let encoded = toon::encode(&truncated);
         if !encoded.is_empty() {
             sections.push(encoded);
@@ -76,7 +82,12 @@ fn build_body(cfg: &ToolConfig, results: &HashMap<String, Value>) -> String {
 fn truncate_array(v: &Value, max: usize) -> Value {
     match v {
         Value::Array(arr) if arr.len() > max => Value::Array(arr[..max].to_vec()),
-        _ => v.clone(),
+        Value::Null
+        | Value::Bool(_)
+        | Value::Number(_)
+        | Value::String(_)
+        | Value::Object(_)
+        | Value::Array(_) => v.clone(),
     }
 }
 
@@ -85,7 +96,7 @@ fn is_empty(v: &Value) -> bool {
         Value::Null => true,
         Value::Array(arr) => arr.is_empty(),
         Value::Object(m) => m.is_empty(),
-        _ => false,
+        Value::Bool(_) | Value::Number(_) | Value::String(_) => false,
     }
 }
 
@@ -93,20 +104,31 @@ fn value_display(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         Value::Number(n) => {
-            if let Some(f) = n.as_f64()
-                && f == f.trunc()
-            {
-                return format!("{}", f as i64);
+            if let Some(f) = n.as_f64() {
+                // Exact integer check via trunc — no precision issue for display formatting
+                #[allow(clippy::float_arithmetic, clippy::float_cmp)]
+                let is_integer = f == f.trunc();
+                if is_integer {
+                    // Truncation is intentional — we just verified f is an integer
+                    #[allow(clippy::cast_possible_truncation)]
+                    return format!("{}", f as i64);
+                }
             }
             n.to_string()
         }
         Value::Bool(b) => b.to_string(),
-        Value::Null => "null".to_string(),
-        other => other.to_string(),
+        Value::Null => "null".to_owned(),
+        other @ (Value::Array(_) | Value::Object(_)) => other.to_string(),
     }
 }
 
 #[cfg(test)]
+// Tests use unwrap/to_string/Default::default for brevity — panics are the desired failure mode
+#[allow(
+    clippy::unwrap_used,
+    clippy::str_to_string,
+    clippy::default_trait_access
+)]
 mod tests {
     use super::*;
     use crate::config::*;
@@ -183,8 +205,8 @@ mod tests {
         assert!(output.contains("[3]{id}:"));
         // Rows for id=4 and id=5 should not appear in the body
         let body = output.split("\n\n").nth(1).unwrap();
-        assert!(!body.contains("4"));
-        assert!(!body.contains("5"));
+        assert!(!body.contains('4'));
+        assert!(!body.contains('5'));
     }
 
     #[test]

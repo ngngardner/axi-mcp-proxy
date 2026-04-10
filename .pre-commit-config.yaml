@@ -22,9 +22,16 @@ repos:
     language: system
     pass_filenames: false
 
+  - id: ast-grep
+    name: ast-grep
+    entry: ast-grep scan
+    language: system
+    pass_filenames: false
+    types: [rust]
+
   - id: cargo-deny
     name: cargo deny
-    entry: cargo deny check
+    entry: cargo deny check licenses bans sources
     language: system
     pass_filenames: false
 

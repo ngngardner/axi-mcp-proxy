@@ -5,7 +5,13 @@ use std::collections::HashMap;
 use crate::engine::resolve::traverse_path;
 
 /// Evaluate an aggregate expression against step results.
-/// Supports: count($step.X), sum($step.X.field), $step.X.Y (direct ref)
+/// Supports: `count($step.X)`, `sum($step.X.field)`, `$step.X.Y` (direct ref)
+///
+/// # Errors
+///
+/// Returns an error if the referenced step is not found or the expression is unknown.
+// HashMap is only used internally — no need to be generic over the hasher
+#[allow(clippy::implicit_hasher)]
 pub fn eval_aggregate(expr: &str, results: &HashMap<String, Value>) -> Result<Value> {
     if let Some(inner) = expr
         .strip_prefix("count(")
@@ -14,7 +20,11 @@ pub fn eval_aggregate(expr: &str, results: &HashMap<String, Value>) -> Result<Va
         let val = resolve_ref(inner, results)?;
         let count = match &val {
             Value::Array(arr) => arr.len(),
-            _ => 0,
+            Value::Null
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_)
+            | Value::Object(_) => 0,
         };
         return Ok(Value::Number(count.into()));
     }
@@ -22,8 +32,12 @@ pub fn eval_aggregate(expr: &str, results: &HashMap<String, Value>) -> Result<Va
     if let Some(inner) = expr.strip_prefix("sum(").and_then(|s| s.strip_suffix(')')) {
         let val = resolve_ref(inner, results)?;
         let sum = match &val {
-            Value::Array(arr) => arr.iter().filter_map(|item| item.as_f64()).sum::<f64>(),
-            _ => 0.0,
+            Value::Array(arr) => arr.iter().filter_map(Value::as_f64).sum::<f64>(),
+            Value::Null
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_)
+            | Value::Object(_) => 0.0,
         };
         return Ok(serde_json::json!(sum));
     }
@@ -43,6 +57,8 @@ fn resolve_ref(reference: &str, results: &HashMap<String, Value>) -> Result<Valu
 }
 
 #[cfg(test)]
+// Tests use unwrap/to_string for brevity — panics are the desired failure mode
+#[allow(clippy::unwrap_used, clippy::str_to_string)]
 mod tests {
     use super::*;
     use serde_json::json;

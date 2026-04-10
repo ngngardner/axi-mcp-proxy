@@ -1,13 +1,15 @@
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::Arc;
+
 use rmcp::Error as McpError;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
     CallToolRequestParam, CallToolResult, Content, Implementation, ListToolsResult,
-    PaginatedRequestParam, ServerCapabilities, ServerInfo, Tool, ToolsCapability,
+    PaginatedRequestParam, ProtocolVersion, ServerCapabilities, ServerInfo, Tool, ToolsCapability,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 use crate::axi::{formatter, help};
 use crate::config::Config;
@@ -23,6 +25,7 @@ pub struct ProxyServer {
 }
 
 impl ProxyServer {
+    #[must_use]
     pub fn new(config: Config, pool: Pool) -> Self {
         let tools = build_tool_schemas(&config);
         Self {
@@ -33,13 +36,19 @@ impl ProxyServer {
     }
 }
 
+impl std::fmt::Debug for ProxyServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProxyServer").finish_non_exhaustive()
+    }
+}
+
 impl ServerHandler for ProxyServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            protocol_version: Default::default(),
+            protocol_version: ProtocolVersion::default(),
             capabilities: ServerCapabilities {
                 tools: Some(ToolsCapability { list_changed: None }),
-                ..Default::default()
+                ..ServerCapabilities::default()
             },
             server_info: Implementation {
                 name: "axi-mcp-proxy".into(),
@@ -74,7 +83,7 @@ impl ServerHandler for ProxyServer {
 
         // Built-in: list_upstream_tools
         if tool_name == "list_upstream_tools" {
-            if let Some(Value::Bool(true)) = args.get("help") {
+            if matches!(args.get("help"), Some(Value::Bool(true))) {
                 return Ok(CallToolResult::success(vec![Content::text(
                     "list_upstream_tools — List all tools available on connected upstreams\n\n\
                      Discovers and enumerates every tool registered on each upstream MCP server.\n\
@@ -93,7 +102,7 @@ impl ServerHandler for ProxyServer {
         };
 
         // Check for help parameter
-        if let Some(Value::Bool(true)) = args.get("help") {
+        if matches!(args.get("help"), Some(Value::Bool(true))) {
             return Ok(CallToolResult::success(vec![Content::text(help::help(
                 tool_cfg,
             ))]));
@@ -112,10 +121,14 @@ impl ServerHandler for ProxyServer {
     }
 }
 
-use std::future::Future;
-
 impl ProxyServer {
-    /// Run a tool by name with the given params. Used by --run-tool CLI mode.
+    /// Run a tool by name with the given params. Used by `--run-tool` CLI mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tool is unknown or execution fails.
+    // HashMap is only used internally — no need to be generic over the hasher
+    #[allow(clippy::implicit_hasher)]
     pub async fn run_tool(
         &self,
         tool_name: &str,
@@ -131,7 +144,9 @@ impl ProxyServer {
                 .iter()
                 .filter_map(|c| match &c.raw {
                     rmcp::model::RawContent::Text(t) => Some(t.text.as_str()),
-                    _ => None,
+                    rmcp::model::RawContent::Image(_) | rmcp::model::RawContent::Resource(_) => {
+                        None
+                    }
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -147,6 +162,8 @@ impl ProxyServer {
         self.execute_tool(tool_cfg, params).await
     }
 
+    // HashMap is only used internally — no need to be generic over the hasher
+    #[allow(clippy::implicit_hasher)]
     async fn execute_tool(
         &self,
         tool_cfg: &crate::config::ToolConfig,
@@ -168,8 +185,8 @@ impl ProxyServer {
 
                 handles.push(tokio::spawn(async move {
                     let call_result = pool.call_tool(&upstream, &tool, resolved_args).await?;
-                    let data = extract_result_data(&call_result);
-                    let data = apply_transform(data, &transform)?;
+                    let raw_data = extract_result_data(&call_result);
+                    let data = apply_transform(raw_data, &transform)?;
                     Ok::<_, anyhow::Error>((step_name, data))
                 }));
             }
@@ -207,7 +224,7 @@ impl ProxyServer {
 
                 let encoded = toon::encode(&Value::Object(data));
                 let toon_output = if encoded.is_empty() {
-                    "No upstream tools found.".to_string()
+                    "No upstream tools found.".to_owned()
                 } else {
                     encoded
                 };
@@ -257,7 +274,6 @@ fn build_tool_schemas(config: &Config) -> Vec<Tool> {
 
         for param in &tool_cfg.parameters {
             let type_str = match param.param_type.as_str() {
-                "string" => "string",
                 "number" => "number",
                 "boolean" => "boolean",
                 _ => "string",
@@ -289,7 +305,8 @@ fn build_tool_schemas(config: &Config) -> Vec<Tool> {
             "required": required,
         });
 
-        let schema_obj: serde_json::Map<String, Value> = serde_json::from_value(schema).unwrap();
+        let schema_obj: serde_json::Map<String, Value> =
+            serde_json::from_value(schema).unwrap_or_default();
 
         tools.push(Tool::new(
             name.clone(),
@@ -309,7 +326,7 @@ fn build_tool_schemas(config: &Config) -> Vec<Tool> {
         }
     });
     let list_schema_obj: serde_json::Map<String, Value> =
-        serde_json::from_value(list_schema).unwrap();
+        serde_json::from_value(list_schema).unwrap_or_default();
     tools.push(Tool::new(
         "list_upstream_tools",
         "List all tools available on upstream MCP servers",

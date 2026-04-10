@@ -1,0 +1,20 @@
+id: clippy-allow-requires-reason
+language: rust
+severity: error
+note: >-
+  AI agents: prefer fixing the underlying clippy warning over suppressing it.
+  Only add #[allow(clippy::...)] when the fix would be incorrect or would
+  significantly degrade readability — and always explain why in a comment on
+  the line directly above.
+message: >-
+  #[allow(clippy::...)] requires a comment on the preceding line explaining
+  why the suppression is necessary. If you are an AI agent, consider
+  addressing the clippy lint instead of suppressing it.
+rule:
+  any:
+    - pattern: "#[allow($$$)]"
+    - pattern: "#![allow($$$)]"
+  regex: "clippy::"
+  not:
+    follows:
+      kind: line_comment

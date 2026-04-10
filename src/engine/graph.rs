@@ -5,6 +5,10 @@ use crate::config::StepConfig;
 
 /// Sort steps into parallel layers using Kahn's algorithm.
 /// Steps in the same layer have all dependencies satisfied and can run concurrently.
+///
+/// # Errors
+///
+/// Returns an error if a dependency cycle is detected.
 pub fn build_layers(steps: &[StepConfig]) -> Result<Vec<Vec<&StepConfig>>> {
     let mut placed: HashSet<&str> = HashSet::new();
     let mut layers: Vec<Vec<&StepConfig>> = Vec::new();
@@ -36,6 +40,12 @@ pub fn build_layers(steps: &[StepConfig]) -> Result<Vec<Vec<&StepConfig>>> {
 }
 
 #[cfg(test)]
+// Tests use unwrap/to_string/Default::default for brevity — panics are the desired failure mode
+#[allow(
+    clippy::unwrap_used,
+    clippy::str_to_string,
+    clippy::default_trait_access
+)]
 mod tests {
     use super::*;
 
@@ -45,7 +55,7 @@ mod tests {
             upstream: "svc".to_string(),
             tool: "x".to_string(),
             args: Default::default(),
-            depends_on: deps.iter().map(|s| s.to_string()).collect(),
+            depends_on: deps.iter().map(ToString::to_string).collect(),
             transform: None,
         }
     }

@@ -5,15 +5,26 @@ use nickel_lang_core::program::Program;
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::LazyLock;
 
 use serde::Deserialize;
 
 use super::types::Config;
 
+// Static regex compilation — pattern is a constant literal, expect cannot fail
+#[allow(clippy::expect_used)]
+static ENV_VAR_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\$\{([^}]+)\}").expect("valid regex"));
+
 /// Load and validate a Nickel config file.
 ///
 /// Evaluates the .ncl file using nickel-lang-core (no subprocess),
 /// deserializes into Config, resolves env vars, and runs structural validation.
+///
+/// # Errors
+///
+/// Returns an error if the file is not `.ncl`, evaluation fails,
+/// deserialization fails, or structural validation fails.
 pub fn load(path: &Path) -> Result<Config> {
     let ext = path.extension().and_then(|e| e.to_str());
     if ext != Some("ncl") {
@@ -49,15 +60,13 @@ pub fn load(path: &Path) -> Result<Config> {
 
 /// Expand `${VAR_NAME}` patterns in auth token and header values.
 fn resolve_env_vars(config: &mut Config) {
-    let pattern = Regex::new(r"\$\{([^}]+)\}").unwrap();
-
     for upstream in config.upstreams.values_mut() {
         if let Some(ref mut token) = upstream.auth.token {
-            *token = expand_env(&pattern, token);
+            *token = expand_env(&ENV_VAR_PATTERN, token);
         }
         if let Some(ref mut headers) = upstream.auth.headers {
             for value in headers.values_mut() {
-                *value = expand_env(&pattern, value);
+                *value = expand_env(&ENV_VAR_PATTERN, value);
             }
         }
     }
@@ -67,7 +76,7 @@ fn expand_env(pattern: &Regex, s: &str) -> String {
     pattern
         .replace_all(s, |caps: &regex::Captures| {
             let var_name = &caps[1];
-            std::env::var(var_name).unwrap_or_else(|_| caps[0].to_string())
+            std::env::var(var_name).unwrap_or_else(|_| caps[0].to_owned())
         })
         .into_owned()
 }
@@ -106,29 +115,12 @@ fn validate(config: &Config) -> Result<()> {
 }
 
 fn check_cycles(steps: &[super::types::StepConfig]) -> Result<()> {
-    let names: HashSet<&str> = steps.iter().map(|s| s.name.as_str()).collect();
-
-    let mut deps: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
-    for step in steps {
-        for dep in &step.depends_on {
-            if !names.contains(dep.as_str()) {
-                bail!("step {:?} depends on unknown step {:?}", step.name, dep);
-            }
-            deps.entry(step.name.as_str())
-                .or_default()
-                .push(dep.as_str());
-        }
-    }
-
     #[derive(Clone, Copy, PartialEq)]
     enum Color {
         White,
         Gray,
         Black,
     }
-
-    let mut color: std::collections::HashMap<&str, Color> =
-        names.iter().map(|&n| (n, Color::White)).collect();
 
     fn visit<'a>(
         name: &'a str,
@@ -153,6 +145,22 @@ fn check_cycles(steps: &[super::types::StepConfig]) -> Result<()> {
         Ok(())
     }
 
+    let names: HashSet<&str> = steps.iter().map(|s| s.name.as_str()).collect();
+    let mut deps: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    for step in steps {
+        for dep in &step.depends_on {
+            if !names.contains(dep.as_str()) {
+                bail!("step {:?} depends on unknown step {:?}", step.name, dep);
+            }
+            deps.entry(step.name.as_str())
+                .or_default()
+                .push(dep.as_str());
+        }
+    }
+
+    let mut color: std::collections::HashMap<&str, Color> =
+        names.iter().map(|&n| (n, Color::White)).collect();
+
     for &name in &names {
         if color[name] == Color::White {
             visit(name, &deps, &mut color)?;
@@ -163,6 +171,13 @@ fn check_cycles(steps: &[super::types::StepConfig]) -> Result<()> {
 }
 
 #[cfg(test)]
+// Tests use unwrap/expect/to_string/Default::default for brevity — panics are the desired failure mode
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::str_to_string,
+    clippy::default_trait_access
+)]
 mod tests {
     use super::*;
     use std::io::Write;
@@ -438,24 +453,25 @@ let axi = import "axi.ncl" in
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_env_var_expansion() {
-        // SAFETY: test runs single-threaded
+        // SAFETY: test runs single-threaded; set_var is unsafe in edition 2024
         unsafe { std::env::set_var("AXI_TEST_TOKEN", "secret123") };
-        let pattern = Regex::new(r"\$\{([^}]+)\}").unwrap();
         assert_eq!(
-            expand_env(&pattern, "Bearer ${AXI_TEST_TOKEN}"),
+            expand_env(&ENV_VAR_PATTERN, "Bearer ${AXI_TEST_TOKEN}"),
             "Bearer secret123"
         );
+        // SAFETY: cleanup, test runs single-threaded
         unsafe { std::env::remove_var("AXI_TEST_TOKEN") };
     }
 
     #[test]
+    #[allow(unsafe_code)]
     fn test_env_var_expansion_missing() {
-        // SAFETY: test runs single-threaded
+        // SAFETY: test runs single-threaded; remove_var is unsafe in edition 2024
         unsafe { std::env::remove_var("MISSING_VAR_AXI_TEST") };
-        let pattern = Regex::new(r"\$\{([^}]+)\}").unwrap();
         assert_eq!(
-            expand_env(&pattern, "${MISSING_VAR_AXI_TEST}"),
+            expand_env(&ENV_VAR_PATTERN, "${MISSING_VAR_AXI_TEST}"),
             "${MISSING_VAR_AXI_TEST}"
         );
     }

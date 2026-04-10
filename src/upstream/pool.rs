@@ -10,6 +10,7 @@ pub struct Pool {
 }
 
 impl Pool {
+    #[must_use]
     pub fn new(upstreams: &HashMap<String, UpstreamConfig>) -> Self {
         let clients = upstreams
             .iter()
@@ -18,6 +19,11 @@ impl Pool {
         Self { clients }
     }
 
+    /// Call a tool on the specified upstream.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the upstream is unknown or the call fails.
     pub async fn call_tool(
         &self,
         upstream: &str,
@@ -31,14 +37,19 @@ impl Pool {
         client.call_tool(tool, args).await
     }
 
+    /// List tools from every upstream, keyed by upstream name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any upstream connection or listing fails.
     pub async fn list_all_tools(&self) -> Result<HashMap<String, Vec<Tool>>> {
         let mut handles = Vec::new();
 
         for (name, client) in &self.clients {
-            let name = name.clone();
+            let owned_name = name.clone();
             handles.push(async move {
                 let tools = client.list_tools().await?;
-                Ok::<_, anyhow::Error>((name, tools))
+                Ok::<_, anyhow::Error>((owned_name, tools))
             });
         }
 
@@ -49,5 +60,13 @@ impl Pool {
             all_tools.insert(name, tools);
         }
         Ok(all_tools)
+    }
+}
+
+impl std::fmt::Debug for Pool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pool")
+            .field("clients", &self.clients.keys().collect::<Vec<_>>())
+            .finish()
     }
 }

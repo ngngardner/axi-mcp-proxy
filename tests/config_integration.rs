@@ -1,3 +1,12 @@
+// Integration tests — unwrap/expect/to_string for brevity, test_module lint
+// inapplicable to standalone test files
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::str_to_string,
+    clippy::tests_outside_test_module
+)]
+
 use std::path::Path;
 
 // Import the crate (it's a binary crate, so we need to reference it as a library)
@@ -5,12 +14,11 @@ use std::path::Path;
 
 #[test]
 fn test_example_repo_context_loads() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("lib/example_repo_context.ncl");
-
-    // Use nickel-lang-core directly to verify the config evaluates
     use nickel_lang_core::error::NullReporter;
     use nickel_lang_core::eval::cache::CacheImpl;
     use nickel_lang_core::program::Program;
+
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("lib/example_repo_context.ncl");
 
     let mut prog = Program::<CacheImpl>::new_from_file(&path, std::io::stderr(), NullReporter {})
         .expect("should load program");
