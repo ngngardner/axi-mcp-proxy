@@ -2,6 +2,68 @@
 name = "axi-mcp-proxy"
 version = "0.2.0"
 edition = "2024"
+license = "MIT"
+authors = ["Noah Gardner"]
+description = "Composing MCP proxy with Axi design principles"
+repository = "https://github.com/noardscode/axi-mcp-proxy"
+keywords = ["mcp", "proxy", "cli"]
+categories = ["command-line-utilities"]
+
+# ── Strict lint configuration (wemake-level strictness) ──────────────
+
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+missing_debug_implementations = "warn"
+missing_copy_implementations = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+variant_size_differences = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+# Broad lint groups
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+
+# Deny dangerous patterns
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+# Restriction group cherry-picks (strictest lints)
+shadow_reuse = "warn"
+shadow_same = "warn"
+shadow_unrelated = "deny"
+float_arithmetic = "warn"
+integer_division = "warn"
+str_to_string = "warn"
+clone_on_ref_ptr = "warn"
+empty_structs_with_brackets = "warn"
+format_push_string = "warn"
+if_then_some_else_none = "warn"
+mixed_read_write_in_expression = "warn"
+redundant_type_annotations = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+self_named_module_files = "warn"
+tests_outside_test_module = "warn"
+unnecessary_self_imports = "warn"
+wildcard_enum_match_arm = "warn"
+error_impl_error = "deny"
+exit = "deny"
+mem_forget = "deny"
+# Transitive dependency version conflicts are outside our control
+multiple_crate_versions = "allow"
 
 [dependencies]
 rmcp = { version = "0.1", features = [
