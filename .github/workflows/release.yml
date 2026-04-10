@@ -141,8 +141,8 @@ jobs:
         run: |
           for dir in npm/@axi-mcp-proxy/*/; do
             echo "Publishing ${dir}..."
-            npm publish "${dir}" --access public --provenance
+            npm publish "${dir}" --access public --provenance || true
           done
 
       - name: Publish main package
-        run: npm publish npm/axi-mcp-proxy --access public --provenance
+        run: npm publish npm/axi-mcp-proxy --access public --provenance --no-git-checks
