@@ -89,6 +89,11 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      - name: Upgrade npm for trusted publishing (requires >= 11.5.1)
+        run: |
+          npm install -g npm@^11 --force
+          npm --version
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts/
