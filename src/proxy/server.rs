@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::axi::{formatter, help};
 use crate::config::Config;
 use crate::engine::{
-    aggregate, graph, resolve,
+    graph, resolve,
     transform::apply_transform,
 };
 use crate::toon;
@@ -66,56 +66,54 @@ impl ServerHandler for ProxyServer {
         }))
     }
 
-    fn call_tool(
+    async fn call_tool(
         &self,
         request: CallToolRequestParam,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<CallToolResult, McpError>> + Send + '_ {
-        async move {
-            let tool_name = request.name.to_string();
-            let args = request
-                .arguments
-                .unwrap_or_default()
-                .into_iter()
-                .collect::<HashMap<String, Value>>();
+    ) -> Result<CallToolResult, McpError> {
+        let tool_name = request.name.to_string();
+        let args = request
+            .arguments
+            .unwrap_or_default()
+            .into_iter()
+            .collect::<HashMap<String, Value>>();
 
-            // Built-in: list_upstream_tools
-            if tool_name == "list_upstream_tools" {
-                if let Some(Value::Bool(true)) = args.get("help") {
-                    return Ok(CallToolResult::success(vec![Content::text(
-                        "list_upstream_tools — List all tools available on connected upstreams\n\n\
-                         Discovers and enumerates every tool registered on each upstream MCP server.\n\
-                         Output is grouped by upstream name with tool count, name, and description.\n\n\
-                         Parameters: none",
-                    )]));
-                }
-                return self.handle_list_upstream_tools().await;
-            }
-
-            // Find tool config
-            let Some(tool_cfg) = self.config.tools.get(&tool_name) else {
-                return Ok(CallToolResult::error(vec![Content::text(format!(
-                    "unknown tool: {tool_name}"
-                ))]));
-            };
-
-            // Check for help parameter
+        // Built-in: list_upstream_tools
+        if tool_name == "list_upstream_tools" {
             if let Some(Value::Bool(true)) = args.get("help") {
                 return Ok(CallToolResult::success(vec![Content::text(
-                    help::help(tool_cfg),
+                    "list_upstream_tools — List all tools available on connected upstreams\n\n\
+                     Discovers and enumerates every tool registered on each upstream MCP server.\n\
+                     Output is grouped by upstream name with tool count, name, and description.\n\n\
+                     Parameters: none",
                 )]));
             }
+            return self.handle_list_upstream_tools().await;
+        }
 
-            // Build params from args
-            let params: HashMap<String, Value> = args;
+        // Find tool config
+        let Some(tool_cfg) = self.config.tools.get(&tool_name) else {
+            return Ok(CallToolResult::error(vec![Content::text(format!(
+                "unknown tool: {tool_name}"
+            ))]));
+        };
 
-            // Execute steps
-            match self.execute_tool(tool_cfg, &params).await {
-                Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
-                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                    "execution failed: {e}"
-                ))])),
-            }
+        // Check for help parameter
+        if let Some(Value::Bool(true)) = args.get("help") {
+            return Ok(CallToolResult::success(vec![Content::text(
+                help::help(tool_cfg),
+            )]));
+        }
+
+        // Build params from args
+        let params: HashMap<String, Value> = args;
+
+        // Execute steps
+        match self.execute_tool(tool_cfg, &params).await {
+            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "execution failed: {e}"
+            ))])),
         }
     }
 }

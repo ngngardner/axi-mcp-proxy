@@ -85,10 +85,10 @@ fn value_display(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         Value::Number(n) => {
-            if let Some(f) = n.as_f64() {
-                if f == f.trunc() {
-                    return format!("{}", f as i64);
-                }
+            if let Some(f) = n.as_f64()
+                && f == f.trunc()
+            {
+                return format!("{}", f as i64);
             }
             n.to_string()
         }

@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use rmcp::model::{CallToolResult, Tool};
 use std::collections::HashMap;
 

@@ -13,10 +13,10 @@ pub fn apply_transform(data: Value, t: &Option<TransformConfig>) -> Result<Value
     if let Value::Array(arr) = data {
         let mut result = Vec::new();
         for item in arr {
-            if let Some(ref filter) = t.filter {
-                if !eval_filter(&item, filter) {
-                    continue;
-                }
+            if let Some(ref filter) = t.filter
+                && !eval_filter(&item, filter)
+            {
+                continue;
             }
             let mut transformed = item;
             if let Some(ref pick) = t.pick {
@@ -31,10 +31,10 @@ pub fn apply_transform(data: Value, t: &Option<TransformConfig>) -> Result<Value
     }
 
     // Single object
-    if let Some(ref filter) = t.filter {
-        if !eval_filter(&data, filter) {
-            return Ok(Value::Null);
-        }
+    if let Some(ref filter) = t.filter
+        && !eval_filter(&data, filter)
+    {
+        return Ok(Value::Null);
     }
 
     let mut result = data;
