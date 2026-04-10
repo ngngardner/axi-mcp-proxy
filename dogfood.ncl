@@ -16,7 +16,7 @@ let axi = import "axi.ncl" in
           upstream = "github",
           tool = "list_pull_requests",
           args = { owner = "$param.owner", repo = "$param.repo", state = "open", per_page = 10 },
-          transform = { pick = ["number", "title", "user", "updated_at", "draft"] },
+          transform = { pick = ["number", "title", "user.login", "updated_at", "draft"] },
         },
         {
           name = "issues",

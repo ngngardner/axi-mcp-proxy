@@ -53,11 +53,28 @@ fn apply_pick(data: Value, fields: &[String]) -> Value {
     };
     let mut picked = serde_json::Map::with_capacity(fields.len());
     for f in fields {
-        if let Some(v) = m.get(f) {
+        if let Some((head, tail)) = f.split_once('.') {
+            // Dotted path: "user.login" → pick m["user"]["login"], insert as "login"
+            if let Some(parent) = m.get(head) {
+                if let Some(v) = resolve_path(parent, tail) {
+                    let leaf = f.rsplit('.').next().unwrap_or(f);
+                    picked.insert(leaf.to_string(), v);
+                }
+            }
+        } else if let Some(v) = m.get(f) {
             picked.insert(f.clone(), v.clone());
         }
     }
     Value::Object(picked)
+}
+
+/// Resolve a dotted path like "a.b.c" into a nested Value.
+fn resolve_path<'a>(val: &'a Value, path: &str) -> Option<Value> {
+    let mut current = val;
+    for segment in path.split('.') {
+        current = current.as_object()?.get(segment)?;
+    }
+    Some(current.clone())
 }
 
 fn apply_rename(data: Value, renames: &std::collections::HashMap<String, String>) -> Value {
@@ -183,6 +200,27 @@ mod tests {
         });
         let result = apply_transform(data, &t).unwrap();
         assert_eq!(result, Value::Null);
+    }
+
+    #[test]
+    fn test_pick_dotted_path() {
+        let data = json!({"user": {"login": "alice", "id": 1}, "title": "Fix bug"});
+        let result = apply_pick(data, &["title".into(), "user.login".into()]);
+        assert_eq!(result, json!({"title": "Fix bug", "login": "alice"}));
+    }
+
+    #[test]
+    fn test_pick_deep_dotted_path() {
+        let data = json!({"a": {"b": {"c": 42}}});
+        let result = apply_pick(data, &["a.b.c".into()]);
+        assert_eq!(result, json!({"c": 42}));
+    }
+
+    #[test]
+    fn test_pick_dotted_missing() {
+        let data = json!({"user": {"login": "alice"}});
+        let result = apply_pick(data, &["user.missing".into()]);
+        assert_eq!(result, json!({}));
     }
 
     #[test]

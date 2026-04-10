@@ -63,13 +63,21 @@ fn build_body(cfg: &ToolConfig, results: &HashMap<String, Value>) -> String {
         if is_empty(data) {
             continue;
         }
-        let encoded = toon::encode(data);
+        let truncated = truncate_array(data, cfg.max_items as usize);
+        let encoded = toon::encode(&truncated);
         if !encoded.is_empty() {
             sections.push(encoded);
         }
     }
 
     sections.join("\n\n")
+}
+
+fn truncate_array(v: &Value, max: usize) -> Value {
+    match v {
+        Value::Array(arr) if arr.len() > max => Value::Array(arr[..max].to_vec()),
+        _ => v.clone(),
+    }
 }
 
 fn is_empty(v: &Value) -> bool {
