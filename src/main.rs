@@ -21,6 +21,14 @@ struct Cli {
     /// Listen address for SSE transport
     #[arg(long, default_value = "0.0.0.0:8080")]
     addr: SocketAddr,
+
+    /// Run a single tool and print the result to stdout (debug mode)
+    #[arg(long)]
+    run_tool: Option<String>,
+
+    /// JSON params for --run-tool (default: {})
+    #[arg(long, default_value = "{}")]
+    params: String,
 }
 
 #[tokio::main]
@@ -30,6 +38,23 @@ async fn main() -> anyhow::Result<()> {
     let cfg = config::load(&cli.config)?;
     let pool = upstream::pool::Pool::new(&cfg.upstreams);
     let server = proxy::server::ProxyServer::new(cfg, pool);
+
+    // Debug mode: run a single tool and exit
+    if let Some(tool_name) = cli.run_tool {
+        let params: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&cli.params)
+            .map_err(|e| anyhow::anyhow!("invalid --params JSON: {e}"))?;
+        let params = params.into_iter().collect();
+        match server.run_tool(&tool_name, &params).await {
+            Ok(text) => {
+                println!("{text}");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
 
     match cli.transport.as_str() {
         "stdio" => {

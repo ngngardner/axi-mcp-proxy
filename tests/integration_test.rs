@@ -786,6 +786,138 @@ async fn test_list_upstream_tools() {
 }
 
 // ---------------------------------------------------------------------------
+// run_tool tests (--run-tool CLI mode, no MCP transport)
+// ---------------------------------------------------------------------------
+
+/// Helper: create a ProxyServer directly (no SSE transport needed)
+fn make_proxy(cfg: Config) -> ProxyServer {
+    let pool = Pool::new(&cfg.upstreams);
+    ProxyServer::new(cfg, pool)
+}
+
+#[tokio::test]
+async fn test_run_tool_configured_tool() {
+    let (gh_addr, _ct) = start_mock_server(mock_github()).await;
+
+    let tools = HashMap::from([(
+        "repo_context".to_string(),
+        ToolConfig {
+            description: "Get repository context".into(),
+            detailed_help: None,
+            parameters: vec![
+                ParamConfig {
+                    name: "owner".into(),
+                    param_type: "string".into(),
+                    description: "Repo owner".into(),
+                    required: true,
+                },
+                ParamConfig {
+                    name: "repo".into(),
+                    param_type: "string".into(),
+                    description: "Repo name".into(),
+                    required: true,
+                },
+            ],
+            steps: vec![
+                StepConfig {
+                    name: "prs".into(),
+                    upstream: "github".into(),
+                    tool: "list_pull_requests".into(),
+                    args: HashMap::from([
+                        ("owner".into(), json!("$param.owner")),
+                        ("repo".into(), json!("$param.repo")),
+                    ]),
+                    depends_on: vec![],
+                    transform: Some(TransformConfig {
+                        pick: Some(vec!["number".into(), "title".into(), "author".into()]),
+                        rename: None,
+                        filter: None,
+                    }),
+                },
+                StepConfig {
+                    name: "issues".into(),
+                    upstream: "github".into(),
+                    tool: "list_issues".into(),
+                    args: HashMap::from([
+                        ("owner".into(), json!("$param.owner")),
+                        ("repo".into(), json!("$param.repo")),
+                    ]),
+                    depends_on: vec![],
+                    transform: Some(TransformConfig {
+                        pick: Some(vec!["number".into(), "title".into(), "labels".into()]),
+                        rename: None,
+                        filter: None,
+                    }),
+                },
+            ],
+            output_fields: vec![],
+            aggregates: vec![
+                AggregateConfig {
+                    label: "open PRs".into(),
+                    value: "count($step.prs)".into(),
+                },
+                AggregateConfig {
+                    label: "open issues".into(),
+                    value: "count($step.issues)".into(),
+                },
+            ],
+            next_steps: vec![NextStepConfig {
+                command: "get_pull_request {owner} {repo} <number>".into(),
+                description: "PR details".into(),
+                when: None,
+            }],
+            empty_message: "No open PRs or issues found.".into(),
+            max_items: 10,
+        },
+    )]);
+
+    let cfg = make_config(vec![("github", gh_addr)], tools);
+    let proxy = make_proxy(cfg);
+
+    let params: HashMap<String, Value> = HashMap::from([
+        ("owner".into(), json!("testorg")),
+        ("repo".into(), json!("testrepo")),
+    ]);
+
+    let text = proxy.run_tool("repo_context", &params).await.unwrap();
+    assert!(text.contains("3 open PRs"), "got:\n{text}");
+    assert!(text.contains("2 open issues"), "got:\n{text}");
+    assert!(text.contains("alice"), "got:\n{text}");
+}
+
+#[tokio::test]
+async fn test_run_tool_list_upstream_tools() {
+    let (gh_addr, _ct) = start_mock_server(mock_github()).await;
+
+    let cfg = make_config(vec![("github", gh_addr)], HashMap::new());
+    let proxy = make_proxy(cfg);
+
+    let text = proxy
+        .run_tool("list_upstream_tools", &HashMap::new())
+        .await
+        .unwrap();
+    assert!(text.contains("list_pull_requests"), "got:\n{text}");
+    assert!(text.contains("list_issues"), "got:\n{text}");
+}
+
+#[tokio::test]
+async fn test_run_tool_unknown_tool() {
+    let cfg = Config {
+        upstreams: HashMap::new(),
+        tools: HashMap::new(),
+    };
+    let proxy = make_proxy(cfg);
+
+    let result = proxy.run_tool("nonexistent", &HashMap::new()).await;
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("unknown tool: nonexistent"),
+        "got: {err_msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Wire protocol tests with @modelcontextprotocol/server-everything
 // ---------------------------------------------------------------------------
 

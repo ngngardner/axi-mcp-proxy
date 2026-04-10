@@ -115,6 +115,38 @@ impl ServerHandler for ProxyServer {
 use std::future::Future;
 
 impl ProxyServer {
+    /// Run a tool by name with the given params. Used by --run-tool CLI mode.
+    pub async fn run_tool(
+        &self,
+        tool_name: &str,
+        params: &HashMap<String, Value>,
+    ) -> anyhow::Result<String> {
+        if tool_name == "list_upstream_tools" {
+            let result = self
+                .handle_list_upstream_tools()
+                .await
+                .map_err(|e| anyhow::anyhow!("MCP error: {e}"))?;
+            let text = result
+                .content
+                .iter()
+                .filter_map(|c| match &c.raw {
+                    rmcp::model::RawContent::Text(t) => Some(t.text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Ok(text);
+        }
+
+        let tool_cfg = self
+            .config
+            .tools
+            .get(tool_name)
+            .ok_or_else(|| anyhow::anyhow!("unknown tool: {tool_name}"))?;
+
+        self.execute_tool(tool_cfg, params).await
+    }
+
     async fn execute_tool(
         &self,
         tool_cfg: &crate::config::ToolConfig,
