@@ -1,0 +1,300 @@
+use rmcp::handler::server::ServerHandler;
+use rmcp::model::{
+    CallToolRequestParam, CallToolResult, Content, Implementation, ListToolsResult,
+    PaginatedRequestParam, ServerCapabilities, ServerInfo, Tool,
+    ToolsCapability,
+};
+use rmcp::service::{RequestContext, RoleServer};
+use rmcp::Error as McpError;
+use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use crate::axi::{formatter, help};
+use crate::config::Config;
+use crate::engine::{
+    aggregate, graph, resolve,
+    transform::apply_transform,
+};
+use crate::toon;
+use crate::upstream::pool::Pool;
+
+#[derive(Clone)]
+pub struct ProxyServer {
+    config: Arc<Config>,
+    pool: Arc<Pool>,
+    tools: Arc<Vec<Tool>>,
+}
+
+impl ProxyServer {
+    pub fn new(config: Config, pool: Pool) -> Self {
+        let tools = build_tool_schemas(&config);
+        Self {
+            config: Arc::new(config),
+            pool: Arc::new(pool),
+            tools: Arc::new(tools),
+        }
+    }
+}
+
+impl ServerHandler for ProxyServer {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            protocol_version: Default::default(),
+            capabilities: ServerCapabilities {
+                tools: Some(ToolsCapability {
+                    list_changed: None,
+                }),
+                ..Default::default()
+            },
+            server_info: Implementation {
+                name: "axi-mcp-proxy".into(),
+                version: env!("CARGO_PKG_VERSION").into(),
+            },
+            instructions: None,
+        }
+    }
+
+    fn list_tools(
+        &self,
+        _request: PaginatedRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
+        std::future::ready(Ok(ListToolsResult {
+            tools: (*self.tools).clone(),
+            next_cursor: None,
+        }))
+    }
+
+    fn call_tool(
+        &self,
+        request: CallToolRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<CallToolResult, McpError>> + Send + '_ {
+        async move {
+            let tool_name = request.name.to_string();
+            let args = request
+                .arguments
+                .unwrap_or_default()
+                .into_iter()
+                .collect::<HashMap<String, Value>>();
+
+            // Built-in: list_upstream_tools
+            if tool_name == "list_upstream_tools" {
+                if let Some(Value::Bool(true)) = args.get("help") {
+                    return Ok(CallToolResult::success(vec![Content::text(
+                        "list_upstream_tools — List all tools available on connected upstreams\n\n\
+                         Discovers and enumerates every tool registered on each upstream MCP server.\n\
+                         Output is grouped by upstream name with tool count, name, and description.\n\n\
+                         Parameters: none",
+                    )]));
+                }
+                return self.handle_list_upstream_tools().await;
+            }
+
+            // Find tool config
+            let Some(tool_cfg) = self.config.tools.get(&tool_name) else {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "unknown tool: {tool_name}"
+                ))]));
+            };
+
+            // Check for help parameter
+            if let Some(Value::Bool(true)) = args.get("help") {
+                return Ok(CallToolResult::success(vec![Content::text(
+                    help::help(tool_cfg),
+                )]));
+            }
+
+            // Build params from args
+            let params: HashMap<String, Value> = args;
+
+            // Execute steps
+            match self.execute_tool(tool_cfg, &params).await {
+                Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
+                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                    "execution failed: {e}"
+                ))])),
+            }
+        }
+    }
+}
+
+use std::future::Future;
+
+impl ProxyServer {
+    async fn execute_tool(
+        &self,
+        tool_cfg: &crate::config::ToolConfig,
+        params: &HashMap<String, Value>,
+    ) -> anyhow::Result<String> {
+        let layers = graph::build_layers(&tool_cfg.steps)?;
+        let mut results: HashMap<String, Value> = HashMap::new();
+
+        for layer in layers {
+            let mut handles = Vec::new();
+            for step in layer {
+                let resolved_args =
+                    resolve::resolve_args(&step.args, params, &results)?;
+
+                let pool = Arc::clone(&self.pool);
+                let upstream = step.upstream.clone();
+                let tool = step.tool.clone();
+                let transform = step.transform.clone();
+                let step_name = step.name.clone();
+
+                handles.push(tokio::spawn(async move {
+                    let call_result = pool
+                        .call_tool(&upstream, &tool, resolved_args)
+                        .await?;
+                    let data = extract_result_data(&call_result);
+                    let data = apply_transform(data, &transform)?;
+                    Ok::<_, anyhow::Error>((step_name, data))
+                }));
+            }
+
+            for handle in handles {
+                let (name, data) = handle.await??;
+                results.insert(name, data);
+            }
+        }
+
+        formatter::format(tool_cfg, &results)
+    }
+
+    async fn handle_list_upstream_tools(&self) -> Result<CallToolResult, McpError> {
+        match self.pool.list_all_tools().await {
+            Ok(all_tools) => {
+                // Sort upstream names for stable output
+                let mut names: Vec<&String> = all_tools.keys().collect();
+                names.sort();
+
+                let mut data: serde_json::Map<String, Value> = serde_json::Map::new();
+                for name in &names {
+                    let tools = &all_tools[name.as_str()];
+                    let tool_list: Vec<Value> = tools
+                        .iter()
+                        .map(|t| {
+                            serde_json::json!({
+                                "name": t.name,
+                                "description": t.description,
+                            })
+                        })
+                        .collect();
+                    data.insert((*name).clone(), Value::Array(tool_list));
+                }
+
+                let encoded = toon::encode(&Value::Object(data));
+                let toon_output = if encoded.is_empty() {
+                    "No upstream tools found.".to_string()
+                } else {
+                    encoded
+                };
+
+                // Summary line: per-upstream counts
+                let summary_parts: Vec<String> = names
+                    .iter()
+                    .map(|name| format!("{} {} tools", all_tools[name.as_str()].len(), name))
+                    .collect();
+
+                let mut parts = Vec::new();
+                if !summary_parts.is_empty() {
+                    parts.push(summary_parts.join(" | "));
+                }
+                parts.push(format!("{toon_output}\n\n→ list_upstream_tools"));
+
+                Ok(CallToolResult::success(vec![Content::text(
+                    parts.join("\n\n"),
+                )]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "discovery failed: {e}"
+            ))])),
+        }
+    }
+}
+
+fn extract_result_data(result: &CallToolResult) -> Value {
+    for content in &result.content {
+        if let rmcp::model::RawContent::Text(text_content) = &content.raw {
+            let text = &text_content.text;
+            if let Ok(parsed) = serde_json::from_str::<Value>(text) {
+                return parsed;
+            }
+            return Value::String(text.clone());
+        }
+    }
+    Value::Null
+}
+
+fn build_tool_schemas(config: &Config) -> Vec<Tool> {
+    let mut tools = Vec::new();
+
+    for (name, tool_cfg) in &config.tools {
+        let mut properties = serde_json::Map::new();
+        let mut required = Vec::new();
+
+        for param in &tool_cfg.parameters {
+            let type_str = match param.param_type.as_str() {
+                "string" => "string",
+                "number" => "number",
+                "boolean" => "boolean",
+                _ => "string",
+            };
+            properties.insert(
+                param.name.clone(),
+                serde_json::json!({
+                    "type": type_str,
+                    "description": param.description,
+                }),
+            );
+            if param.required {
+                required.push(Value::String(param.name.clone()));
+            }
+        }
+
+        // Add built-in help parameter
+        properties.insert(
+            "help".into(),
+            serde_json::json!({
+                "type": "boolean",
+                "description": "Show help for this tool",
+            }),
+        );
+
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": properties,
+            "required": required,
+        });
+
+        let schema_obj: serde_json::Map<String, Value> =
+            serde_json::from_value(schema).unwrap();
+
+        tools.push(Tool::new(
+            name.clone(),
+            tool_cfg.description.clone(),
+            schema_obj,
+        ));
+    }
+
+    // Built-in list_upstream_tools
+    let list_schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "help": {
+                "type": "boolean",
+                "description": "Show help for this tool"
+            }
+        }
+    });
+    let list_schema_obj: serde_json::Map<String, Value> =
+        serde_json::from_value(list_schema).unwrap();
+    tools.push(Tool::new(
+        "list_upstream_tools",
+        "List all tools available on upstream MCP servers",
+        list_schema_obj,
+    ));
+
+    tools
+}
