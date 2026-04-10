@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   build:
@@ -77,6 +78,9 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -134,15 +138,11 @@ jobs:
           "
 
       - name: Publish platform packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           for dir in npm/@axi-mcp-proxy/*/; do
             echo "Publishing ${dir}..."
-            npm publish "${dir}" --access public
+            npm publish "${dir}" --access public --provenance
           done
 
       - name: Publish main package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish npm/axi-mcp-proxy --access public
+        run: npm publish npm/axi-mcp-proxy --access public --provenance

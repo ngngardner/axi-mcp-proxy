@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "description": "Composable MCP proxy with Nickel configuration",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngngardner/axi-mcp-proxy.git"
+  },
   "bin": {
     "axi-mcp-proxy": "bin.js"
   },

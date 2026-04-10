@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "description": "axi-mcp-proxy binary for macOS arm64",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngngardner/axi-mcp-proxy.git"
+  },
   "os": ["darwin"],
   "cpu": ["arm64"],
   "files": ["axi-mcp-proxy"]
