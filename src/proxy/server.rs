@@ -253,16 +253,32 @@ impl ProxyServer {
 }
 
 fn extract_result_data(result: &CallToolResult) -> Value {
+    // When multiple content blocks exist, prefer structured data (object/array)
+    // over scalars, and longer text over shorter text.
+    let mut best: Option<Value> = None;
+    let mut best_len: usize = 0;
+
     for content in &result.content {
         if let rmcp::model::RawContent::Text(text_content) = &content.raw {
             let text = &text_content.text;
             if let Ok(parsed) = serde_json::from_str::<Value>(text) {
-                return parsed;
+                match &parsed {
+                    Value::Object(_) | Value::Array(_) => return parsed,
+                    Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+                        if text.len() > best_len {
+                            best = Some(parsed);
+                            best_len = text.len();
+                        }
+                    }
+                }
+            } else if text.len() > best_len {
+                best = Some(Value::String(text.clone()));
+                best_len = text.len();
             }
-            return Value::String(text.clone());
         }
     }
-    Value::Null
+
+    best.unwrap_or(Value::Null)
 }
 
 fn build_tool_schemas(config: &Config) -> Vec<Tool> {

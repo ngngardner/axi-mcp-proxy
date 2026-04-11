@@ -5,11 +5,15 @@ let axi = import "axi.ncl" in
       cmd = "gh",
       args = ["mcp"],
     },
+    shell = {
+      cmd = "bunx",
+      args = ["mcp-server-commands"],
+    },
   },
   tools = {
     repo_context = {
       description = "Open PRs, CI status, and assigned issues at a glance",
-      detailed_help = "Shows the top 10 most recent open PRs and issues for a repo. Useful for getting a quick snapshot of activity.",
+      detailed_help = "Shows open PRs, open issues, latest release, recent commits, and CI status for a repo.",
       steps = [
         {
           name = "prs",
@@ -24,6 +28,26 @@ let axi = import "axi.ncl" in
           tool = "list_issues",
           args = { owner = "$param.owner", repo = "$param.repo", state = "open", per_page = 10 },
           transform = { pick = ["number", "title", "labels", "updated_at"] },
+        },
+        {
+          name = "latest_release",
+          upstream = "github",
+          tool = "list_releases",
+          args = { owner = "$param.owner", repo = "$param.repo", per_page = 1 },
+          transform = { pick = ["tag_name", "name", "published_at"] },
+        },
+        {
+          name = "commits",
+          upstream = "github",
+          tool = "list_commits",
+          args = { owner = "$param.owner", repo = "$param.repo", perPage = 5 },
+          transform = { pick = ["sha", "commit.message", "author.login"] },
+        },
+        {
+          name = "ci",
+          upstream = "shell",
+          tool = "run_process",
+          args = { argv = ["gh", "api", "repos/$param.owner/$param.repo/actions/runs?per_page=3", "--jq", "[.workflow_runs[] | {name, status, conclusion, head_branch, run_number}]"] },
         },
       ],
       parameters = [
@@ -45,9 +69,68 @@ let axi = import "axi.ncl" in
       next_steps = [
         { command = "get_pull_request {owner} {repo} <number>", description = "PR details" },
         { command = "get_issue {owner} {repo} <number>",        description = "issue details" },
+        { command = "workflow_status {owner} {repo}",            description = "CI run details" },
       ],
       empty_message = "No open PRs or issues found.",
       max_items = 10,
+    },
+
+    workflow_status = {
+      description = "Recent CI/CD workflow runs and their status",
+      detailed_help = "Shows the most recent GitHub Actions workflow runs for a repo, including status, conclusion, branch, and run number.",
+      steps = [
+        {
+          name = "runs",
+          upstream = "shell",
+          tool = "run_process",
+          args = { argv = ["gh", "api", "repos/$param.owner/$param.repo/actions/runs?per_page=10", "--jq", "[.workflow_runs[] | {name, status, conclusion, head_branch, event, created_at, run_number, html_url}]"] },
+        },
+      ],
+      parameters = [
+        { name = "owner", type = "string", description = "Repo owner", required = true },
+        { name = "repo", type = "string", description = "Repo name", required = true },
+      ],
+      output_fields = [
+        { name = "run_number",  description = "Run #",      prefix = "#" },
+        { name = "name",        description = "Workflow" },
+        { name = "conclusion",  description = "Result" },
+        { name = "head_branch", description = "Branch" },
+        { name = "event",       description = "Trigger" },
+        { name = "created_at",  description = "Started",     default_visible = false },
+        { name = "html_url",    description = "URL",         default_visible = false },
+      ],
+      aggregates = [
+        { label = "runs", value = "count($step.runs)" },
+      ],
+      next_steps = [
+        { command = "repo_context {owner} {repo}", description = "full repo overview" },
+      ],
+      empty_message = "No workflow runs found.",
+      max_items = 10,
+    },
+
+    check = {
+      description = "Run pre-commit CI checks (fmt, clippy, ast-grep, deny)",
+      detailed_help = "Runs prek (pre-commit) with --all-files to execute the full CI check suite: cargo fmt, cargo clippy, ast-grep scan, and cargo deny.",
+      steps = [
+        {
+          name = "result",
+          upstream = "shell",
+          tool = "run_process",
+          args = { argv = ["prek", "run", "--all-files"] },
+        },
+      ],
+      parameters = [],
+      output_fields = [
+        { name = "output", description = "Check output" },
+      ],
+      aggregates = [
+        { label = "status", value = "$step.result" },
+      ],
+      next_steps = [
+        { command = "check", description = "re-run checks after fixes" },
+      ],
+      empty_message = "No output from checks.",
     },
   },
 } | axi.Config

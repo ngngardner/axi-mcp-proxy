@@ -1,9 +1,12 @@
 {
   "mcpServers": {
-    "axi-github": {
+    "axi": {
       "type": "stdio",
       "command": "cargo",
-      "args": ["run", "--", "--config", "dogfood.ncl", "--transport", "stdio"]
+      "args": ["run", "--", "--config", "dogfood.ncl", "--transport", "stdio"],
+      "env": {
+        "CARGO_TARGET_DIR": "target/mcp"
+      }
     }
   }
 }

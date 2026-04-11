@@ -53,6 +53,10 @@ impl Client {
         if let Some(ref cmd) = self.config.cmd {
             let mut command = tokio::process::Command::new(cmd);
             command.args(&self.config.args);
+            #[cfg(windows)]
+            {
+                command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+            }
             let transport = rmcp::transport::TokioChildProcess::new(&mut command)
                 .context("failed to spawn child process")?;
             let service = client_info
