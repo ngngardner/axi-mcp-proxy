@@ -82,21 +82,9 @@ fn expand_env(pattern: &Regex, s: &str) -> String {
 }
 
 /// Structural validation that Nickel contracts don't cover:
-/// - Upstream url/cmd mutual exclusion
 /// - Step upstream references exist
 /// - No dependency cycles
 fn validate(config: &Config) -> Result<()> {
-    for (name, upstream) in &config.upstreams {
-        let has_url = upstream.url.is_some();
-        let has_cmd = upstream.cmd.is_some();
-        if !has_url && !has_cmd {
-            bail!("upstream {name:?}: must set either url or cmd");
-        }
-        if has_url && has_cmd {
-            bail!("upstream {name:?}: url and cmd are mutually exclusive");
-        }
-    }
-
     for (tool_name, tool) in &config.tools {
         for (i, step) in tool.steps.iter().enumerate() {
             if !config.upstreams.contains_key(&step.upstream) {
@@ -392,50 +380,58 @@ let axi = import "axi.ncl" in
     }
 
     #[test]
-    fn test_validate_upstream_missing_transport() {
-        let config = Config {
-            upstreams: std::collections::HashMap::from([(
-                "svc".to_string(),
-                super::super::types::UpstreamConfig {
-                    url: None,
-                    cmd: None,
-                    args: vec![],
-                    auth: Default::default(),
-                },
-            )]),
-            tools: std::collections::HashMap::new(),
-        };
-        let result = validate(&config);
-        assert!(result.is_err());
+    fn test_nickel_rejects_upstream_no_transport() {
+        let dir = tempfile::tempdir().unwrap();
+        write_axi_ncl(dir.path());
+        let config = r#"
+let axi = import "axi.ncl" in
+{
+  upstreams = { svc = { } },
+  tools = {
+    search = {
+      description = "search tool",
+      steps = [{ name = "s1", upstream = "svc", tool = "find", args = {} }],
+      output_fields = [{ name = "id", description = "ID" }],
+      aggregates = [{ label = "x", value = "count($step.s1)" }],
+      next_steps = [{ command = "search", description = "y" }],
+      empty_message = "none",
+    },
+  },
+} | axi.Config
+"#;
+        let path = write_ncl(dir.path(), "config.ncl", config);
+        let result = load(&path);
         assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("must set either url or cmd")
+            result.is_err(),
+            "upstream with neither url nor cmd should fail: {result:?}"
         );
     }
 
     #[test]
-    fn test_validate_upstream_both_transports() {
-        let config = Config {
-            upstreams: std::collections::HashMap::from([(
-                "svc".to_string(),
-                super::super::types::UpstreamConfig {
-                    url: Some("http://x".to_string()),
-                    cmd: Some("y".to_string()),
-                    args: vec![],
-                    auth: Default::default(),
-                },
-            )]),
-            tools: std::collections::HashMap::new(),
-        };
-        let result = validate(&config);
-        assert!(result.is_err());
+    fn test_nickel_rejects_upstream_both_transports() {
+        let dir = tempfile::tempdir().unwrap();
+        write_axi_ncl(dir.path());
+        let config = r#"
+let axi = import "axi.ncl" in
+{
+  upstreams = { svc = { url = "http://x", cmd = "y" } },
+  tools = {
+    search = {
+      description = "search tool",
+      steps = [{ name = "s1", upstream = "svc", tool = "find", args = {} }],
+      output_fields = [{ name = "id", description = "ID" }],
+      aggregates = [{ label = "x", value = "count($step.s1)" }],
+      next_steps = [{ command = "search", description = "y" }],
+      empty_message = "none",
+    },
+  },
+} | axi.Config
+"#;
+        let path = write_ncl(dir.path(), "config.ncl", config);
+        let result = load(&path);
         assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("mutually exclusive")
+            result.is_err(),
+            "upstream with both url and cmd should fail: {result:?}"
         );
     }
 

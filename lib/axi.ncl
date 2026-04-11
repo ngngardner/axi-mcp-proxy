@@ -15,6 +15,15 @@ let ParamType = std.contract.from_predicate (fun x =>
   x == "string" || x == "number" || x == "boolean"
 ) in
 
+let UpstreamsUrlXorCmd = std.contract.from_predicate (fun upstreams =>
+  std.record.values upstreams
+  |> std.array.all (fun upstream =>
+    let has_url = std.record.has_field "url" upstream in
+    let has_cmd = std.record.has_field "cmd" upstream in
+    (has_url || has_cmd) && !(has_url && has_cmd)
+  )
+) in
+
 {
   Step = {
     name | String,
@@ -90,7 +99,7 @@ let ParamType = std.contract.from_predicate (fun x =>
   },
 
   Config = {
-    upstreams | { _ : Upstream },
+    upstreams | { _ : Upstream } | UpstreamsUrlXorCmd,
     tools | { _ : Tool },
   },
 }
