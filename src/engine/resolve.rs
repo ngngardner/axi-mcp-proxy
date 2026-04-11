@@ -19,6 +19,8 @@ pub fn resolve_args(
         let rv = resolve_value(v, params, results)?;
         resolved.insert(k.clone(), rv);
     }
+    // Drop keys that resolved to null (e.g. absent optional params)
+    resolved.retain(|_, v| !v.is_null());
     Ok(resolved)
 }
 
@@ -54,14 +56,16 @@ fn resolve_string(
     results: &HashMap<String, Value>,
 ) -> Result<Value> {
     // Exact match: entire string is a single reference → return typed value
-    if let Some(name) = s.strip_prefix("$param.")
-        && !name.contains("$param.")
-        && !name.contains("$step.")
+    if let Some(raw_name) = s.strip_prefix("$param.")
+        && !raw_name.contains("$param.")
+        && !raw_name.contains("$step.")
     {
-        return params
-            .get(name)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("unknown parameter: {name}"));
+        let (name, optional) = parse_optional(raw_name);
+        return match params.get(name) {
+            Some(v) => Ok(v.clone()),
+            None if optional => Ok(Value::Null),
+            None => Err(anyhow::anyhow!("unknown parameter: {name}")),
+        };
     }
     if let Some(path) = s.strip_prefix("$step.")
         && !path.contains("$param.")
@@ -93,12 +97,14 @@ fn interpolate_string(
             output.push_str(&rest[..pos]);
             rest = &rest[pos..];
 
-            if let Some(name) = try_extract_ref(rest, "$param.") {
-                let val = params
-                    .get(name)
-                    .ok_or_else(|| anyhow::anyhow!("unknown parameter: {name}"))?;
-                output.push_str(&value_to_string(val));
-                rest = &rest["$param.".len() + name.len()..];
+            if let Some(raw_name) = try_extract_ref(rest, "$param.") {
+                let (name, optional) = parse_optional(raw_name);
+                match params.get(name) {
+                    Some(val) => output.push_str(&value_to_string(val)),
+                    None if optional => {} // absent optional → empty string
+                    None => return Err(anyhow::anyhow!("unknown parameter: {name}")),
+                }
+                rest = &rest["$param.".len() + raw_name.len()..];
             } else if let Some(path) = try_extract_ref(rest, "$step.") {
                 let val = traverse_path(path, results)?;
                 output.push_str(&value_to_string(&val));
@@ -118,6 +124,7 @@ fn interpolate_string(
 
 /// Extract a dotted identifier after a prefix like `$param.` or `$step.`.
 /// Identifiers consist of alphanumeric chars, underscores, and dots (for paths).
+/// A trailing `?` marks the reference as optional (e.g. `$param.x?`).
 /// Stops at whitespace, quotes, or other non-identifier chars.
 fn try_extract_ref<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     let after = s.strip_prefix(prefix)?;
@@ -127,9 +134,27 @@ fn try_extract_ref<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     if end == 0 {
         return None;
     }
+    // Include a trailing `?` as an optional-param marker only if it's terminal
+    // (end of string or followed by a non-identifier char like `/`, whitespace, etc.)
+    let has_terminal_question_mark = after.as_bytes().get(end) == Some(&b'?')
+        && after
+            .as_bytes()
+            .get(end + 1)
+            .is_none_or(|&c| !c.is_ascii_alphanumeric() && c != b'_' && c != b'.');
+    let ref_end = if has_terminal_question_mark {
+        end + 1
+    } else {
+        end
+    };
     // Trim trailing dots (e.g. "$param.owner." in a sentence)
-    let name = after[..end].trim_end_matches('.');
+    let name = after[..ref_end].trim_end_matches('.');
     if name.is_empty() { None } else { Some(name) }
+}
+
+/// Strip a trailing `?` from a reference name, returning `(name, is_optional)`.
+fn parse_optional(raw: &str) -> (&str, bool) {
+    raw.strip_suffix('?')
+        .map_or((raw, false), |name| (name, true))
 }
 
 fn value_to_string(v: &Value) -> String {
@@ -341,5 +366,62 @@ mod tests {
         let args: HashMap<String, Value> = [("x".to_string(), json!("costs $5"))].into();
         let resolved = resolve_args(&args, &HashMap::new(), &HashMap::new()).unwrap();
         assert_eq!(resolved["x"], json!("costs $5"));
+    }
+
+    #[test]
+    fn test_optional_param_absent() {
+        let args: HashMap<String, Value> = [("ft".to_string(), json!("$param.file_type?"))].into();
+        let resolved = resolve_args(&args, &HashMap::new(), &HashMap::new()).unwrap();
+        assert!(
+            !resolved.contains_key("ft"),
+            "absent optional param should be dropped"
+        );
+    }
+
+    #[test]
+    fn test_optional_param_present() {
+        let args: HashMap<String, Value> = [("ft".to_string(), json!("$param.file_type?"))].into();
+        let params: HashMap<String, Value> = [("file_type".to_string(), json!("rs"))].into();
+        let resolved = resolve_args(&args, &params, &HashMap::new()).unwrap();
+        assert_eq!(resolved["ft"], json!("rs"));
+    }
+
+    #[test]
+    fn test_optional_param_interpolation_absent() {
+        let args: HashMap<String, Value> =
+            [("x".to_string(), json!("prefix/$param.x?/suffix"))].into();
+        let resolved = resolve_args(&args, &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(resolved["x"], json!("prefix//suffix"));
+    }
+
+    #[test]
+    fn test_optional_param_interpolation_present() {
+        let args: HashMap<String, Value> =
+            [("x".to_string(), json!("prefix/$param.x?/suffix"))].into();
+        let params: HashMap<String, Value> = [("x".to_string(), json!("val"))].into();
+        let resolved = resolve_args(&args, &params, &HashMap::new()).unwrap();
+        assert_eq!(resolved["x"], json!("prefix/val/suffix"));
+    }
+
+    #[test]
+    fn test_required_param_still_errors() {
+        let args: HashMap<String, Value> = [("x".to_string(), json!("$param.x"))].into();
+        let result = resolve_args(&args, &HashMap::new(), &HashMap::new());
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("unknown parameter")
+        );
+    }
+
+    #[test]
+    fn test_null_filtering() {
+        let args: HashMap<String, Value> =
+            [("x".to_string(), Value::Null), ("y".to_string(), json!(1))].into();
+        let resolved = resolve_args(&args, &HashMap::new(), &HashMap::new()).unwrap();
+        assert!(!resolved.contains_key("x"), "null values should be dropped");
+        assert_eq!(resolved["y"], json!(1));
     }
 }
