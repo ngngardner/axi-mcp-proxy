@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cargo run -- --config dogfood.ncl --run-tool repo_context --params '{\"owner\":\"ngngardner\",\"repo\":\"axi-mcp-proxy\"}' 2>/dev/null",
+            "timeout": 15000
+          }
+        ]
+      }
+    ]
+  }
+}
