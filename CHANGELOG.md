@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/ngngardner/axi-mcp-proxy/compare/v0.3.0...v0.3.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* add actions:write permission to release-please workflow ([ef4b1c6](https://github.com/ngngardner/axi-mcp-proxy/commit/ef4b1c6d6c44ce2e0a7444752667722d6277414d))
+
 ## [0.3.0](https://github.com/ngngardner/axi-mcp-proxy/compare/v0.2.0...v0.3.0) (2026-04-11)
 
 
