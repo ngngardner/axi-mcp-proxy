@@ -71,7 +71,7 @@ mod tests {
             detailed_help: Some("Searches across all indexed items.".into()),
             parameters: vec![ParamConfig {
                 name: "query".into(),
-                param_type: "string".into(),
+                param_type: ParamType::String,
                 description: "Search query".into(),
                 required: true,
             }],

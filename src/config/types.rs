@@ -74,11 +74,46 @@ const fn default_max_items() -> u32 {
     10
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParamType {
+    String,
+    Number,
+    Boolean,
+}
+
+impl std::fmt::Display for ParamType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String => f.write_str("string"),
+            Self::Number => f.write_str("number"),
+            Self::Boolean => f.write_str("boolean"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ParamType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = <String as Deserialize>::deserialize(deserializer)?;
+        match s.as_str() {
+            "string" => Ok(Self::String),
+            "number" => Ok(Self::Number),
+            "boolean" => Ok(Self::Boolean),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &["string", "number", "boolean"],
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ParamConfig {
     pub name: String,
     #[serde(rename = "type")]
-    pub param_type: String,
+    pub param_type: ParamType,
     pub description: String,
     pub required: bool,
 }

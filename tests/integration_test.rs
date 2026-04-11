@@ -290,13 +290,13 @@ async fn test_repo_context() {
             parameters: vec![
                 ParamConfig {
                     name: "owner".into(),
-                    param_type: "string".into(),
+                    param_type: ParamType::String,
                     description: "Repo owner".into(),
                     required: true,
                 },
                 ParamConfig {
                     name: "repo".into(),
-                    param_type: "string".into(),
+                    param_type: ParamType::String,
                     description: "Repo name".into(),
                     required: true,
                 },
@@ -391,7 +391,7 @@ async fn test_help_flag() {
             detailed_help: None,
             parameters: vec![ParamConfig {
                 name: "query".into(),
-                param_type: "string".into(),
+                param_type: ParamType::String,
                 description: "Search query".into(),
                 required: true,
             }],
@@ -436,13 +436,13 @@ async fn test_multi_upstream() {
             parameters: vec![
                 ParamConfig {
                     name: "owner".into(),
-                    param_type: "string".into(),
+                    param_type: ParamType::String,
                     description: "Owner".into(),
                     required: true,
                 },
                 ParamConfig {
                     name: "repo".into(),
-                    param_type: "string".into(),
+                    param_type: ParamType::String,
                     description: "Repo".into(),
                     required: true,
                 },
@@ -529,7 +529,7 @@ async fn test_empty_results() {
             detailed_help: None,
             parameters: vec![ParamConfig {
                 name: "query".into(),
-                param_type: "string".into(),
+                param_type: ParamType::String,
                 description: "Query".into(),
                 required: true,
             }],
@@ -624,13 +624,13 @@ async fn test_transform_rename() {
             parameters: vec![
                 ParamConfig {
                     name: "owner".into(),
-                    param_type: "string".into(),
+                    param_type: ParamType::String,
                     description: "Owner".into(),
                     required: true,
                 },
                 ParamConfig {
                     name: "repo".into(),
-                    param_type: "string".into(),
+                    param_type: ParamType::String,
                     description: "Repo".into(),
                     required: true,
                 },
@@ -825,13 +825,13 @@ async fn test_run_tool_configured_tool() {
             parameters: vec![
                 ParamConfig {
                     name: "owner".into(),
-                    param_type: "string".into(),
+                    param_type: ParamType::String,
                     description: "Repo owner".into(),
                     required: true,
                 },
                 ParamConfig {
                     name: "repo".into(),
-                    param_type: "string".into(),
+                    param_type: ParamType::String,
                     description: "Repo name".into(),
                     required: true,
                 },
@@ -977,7 +977,7 @@ async fn test_wire_echo() {
             detailed_help: None,
             parameters: vec![ParamConfig {
                 name: "message".into(),
-                param_type: "string".into(),
+                param_type: ParamType::String,
                 description: "Message to echo".into(),
                 required: true,
             }],
@@ -1046,13 +1046,13 @@ async fn test_wire_get_sum() {
             parameters: vec![
                 ParamConfig {
                     name: "a".into(),
-                    param_type: "number".into(),
+                    param_type: ParamType::Number,
                     description: "First number".into(),
                     required: true,
                 },
                 ParamConfig {
                     name: "b".into(),
-                    param_type: "number".into(),
+                    param_type: ParamType::Number,
                     description: "Second number".into(),
                     required: true,
                 },

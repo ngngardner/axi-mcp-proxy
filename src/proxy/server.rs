@@ -12,7 +12,7 @@ use rmcp::service::{RequestContext, RoleServer};
 use serde_json::Value;
 
 use crate::axi::{formatter, help};
-use crate::config::Config;
+use crate::config::{Config, ParamType};
 use crate::engine::{graph, resolve, transform::apply_transform};
 use crate::toon;
 use crate::upstream::pool::Pool;
@@ -297,10 +297,10 @@ fn build_tool_schemas(config: &Config) -> Vec<Tool> {
         let mut required = Vec::new();
 
         for param in &tool_cfg.parameters {
-            let type_str = match param.param_type.as_str() {
-                "number" => "number",
-                "boolean" => "boolean",
-                _ => "string",
+            let type_str = match param.param_type {
+                ParamType::String => "string",
+                ParamType::Number => "number",
+                ParamType::Boolean => "boolean",
             };
             properties.insert(
                 param.name.clone(),

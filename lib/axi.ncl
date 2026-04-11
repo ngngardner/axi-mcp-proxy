@@ -11,6 +11,10 @@ let AuthType = std.contract.from_predicate (fun x =>
   x == "none" || x == "bearer" || x == "basic" || x == "header"
 ) in
 
+let ParamType = std.contract.from_predicate (fun x =>
+  x == "string" || x == "number" || x == "boolean"
+) in
+
 {
   Step = {
     name | String,
@@ -66,7 +70,7 @@ let AuthType = std.contract.from_predicate (fun x =>
     parameters
       | Array {
         name | String,
-        type | String,
+        type | ParamType,
         description | String,
         required | Bool,
       }
