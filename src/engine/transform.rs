@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde_json::Value;
 
-use crate::config::TransformConfig;
+use crate::config::{FilterExpr, FilterOp, TransformConfig};
 
 /// Apply filter, pick, rename, and truncate operations to data.
 ///
@@ -18,7 +18,7 @@ pub fn apply_transform(data: Value, t: &Option<TransformConfig>, full: bool) -> 
     if let Value::Array(arr) = data {
         let mut result = Vec::new();
         for item in arr {
-            if let Some(ref filter) = transform.filter
+            if let Some(ref filter) = transform.parsed_filter
                 && !eval_filter(&item, filter)
             {
                 continue;
@@ -30,7 +30,7 @@ pub fn apply_transform(data: Value, t: &Option<TransformConfig>, full: bool) -> 
     }
 
     // Single object
-    if let Some(ref filter) = transform.filter
+    if let Some(ref filter) = transform.parsed_filter
         && !eval_filter(&data, filter)
     {
         return Ok(Value::Null);
@@ -123,30 +123,18 @@ fn truncate_string(s: &str, max: usize) -> String {
     first_line.chars().take(max).collect()
 }
 
-/// Evaluate a simple filter expression: "field == \"value\"" or "field != \"value\""
-fn eval_filter(data: &Value, expr: &str) -> bool {
+fn eval_filter(data: &Value, expr: &FilterExpr) -> bool {
     let Some(m) = data.as_object() else {
         return true;
     };
-
-    if let Some((field, expected)) = parse_op(expr, "==") {
-        return m
-            .get(&field)
-            .is_some_and(|v| value_to_string(v) == expected);
+    match expr.op {
+        FilterOp::Eq => m
+            .get(&expr.field)
+            .is_some_and(|v| value_to_string(v) == expr.value),
+        FilterOp::Ne => m
+            .get(&expr.field)
+            .is_none_or(|v| value_to_string(v) != expr.value),
     }
-
-    if let Some((field, expected)) = parse_op(expr, "!=") {
-        return m.get(&field).is_none_or(|v| value_to_string(v) != expected);
-    }
-
-    true
-}
-
-fn parse_op(expr: &str, op: &str) -> Option<(String, String)> {
-    let (left, right) = expr.split_once(op)?;
-    let field = left.trim().to_owned();
-    let expected = right.trim().trim_matches('"').to_owned();
-    Some((field, expected))
 }
 
 fn value_to_string(v: &Value) -> String {
@@ -176,6 +164,7 @@ mod tests {
             rename: None,
             filter: None,
             truncate: None,
+            parsed_filter: None,
         });
         let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(
@@ -192,6 +181,7 @@ mod tests {
             rename: Some(HashMap::from([("old_name".into(), "new_name".into())])),
             filter: None,
             truncate: None,
+            parsed_filter: None,
         });
         let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, json!({"new_name": "value"}));
@@ -205,6 +195,11 @@ mod tests {
             rename: None,
             filter: Some(r#"state == "open""#.into()),
             truncate: None,
+            parsed_filter: Some(FilterExpr {
+                field: "state".into(),
+                op: FilterOp::Eq,
+                value: "open".into(),
+            }),
         });
         let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, json!([{"state": "open"}]));
@@ -218,6 +213,11 @@ mod tests {
             rename: None,
             filter: Some(r#"state != "closed""#.into()),
             truncate: None,
+            parsed_filter: Some(FilterExpr {
+                field: "state".into(),
+                op: FilterOp::Ne,
+                value: "closed".into(),
+            }),
         });
         let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, json!([{"state": "open"}]));
@@ -238,6 +238,11 @@ mod tests {
             rename: None,
             filter: Some(r#"state == "open""#.into()),
             truncate: None,
+            parsed_filter: Some(FilterExpr {
+                field: "state".into(),
+                op: FilterOp::Eq,
+                value: "open".into(),
+            }),
         });
         let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, Value::Null);
@@ -277,6 +282,7 @@ mod tests {
             rename: None,
             filter: None,
             truncate: None,
+            parsed_filter: None,
         });
         let result = apply_transform(data, &t, false).unwrap();
         // Every value should be a primitive (no nested objects/arrays)
@@ -307,17 +313,32 @@ mod tests {
 
     #[test]
     fn test_filter_non_map() {
-        assert!(eval_filter(&json!(42), "x == \"1\""));
+        let expr = FilterExpr {
+            field: "x".into(),
+            op: FilterOp::Eq,
+            value: "1".into(),
+        };
+        assert!(eval_filter(&json!(42), &expr));
     }
 
     #[test]
     fn test_filter_missing_field() {
-        assert!(!eval_filter(&json!({"a": 1}), "b == \"1\""));
+        let expr = FilterExpr {
+            field: "b".into(),
+            op: FilterOp::Eq,
+            value: "1".into(),
+        };
+        assert!(!eval_filter(&json!({"a": 1}), &expr));
     }
 
     #[test]
     fn test_filter_missing_field_not_equals() {
-        assert!(eval_filter(&json!({"a": 1}), "b != \"1\""));
+        let expr = FilterExpr {
+            field: "b".into(),
+            op: FilterOp::Ne,
+            value: "1".into(),
+        };
+        assert!(eval_filter(&json!({"a": 1}), &expr));
     }
 
     #[test]
@@ -328,6 +349,7 @@ mod tests {
             rename: None,
             filter: None,
             truncate: Some(HashMap::from([("sha".into(), 7)])),
+            parsed_filter: None,
         });
         let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, json!([{"sha": "abcdef1", "msg": "short"}]));
@@ -341,6 +363,7 @@ mod tests {
             rename: None,
             filter: None,
             truncate: Some(HashMap::from([("msg".into(), 200)])),
+            parsed_filter: None,
         });
         let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, json!({"msg": "first line"}));
@@ -354,6 +377,7 @@ mod tests {
             rename: None,
             filter: None,
             truncate: Some(HashMap::from([("name".into(), 100)])),
+            parsed_filter: None,
         });
         let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, json!({"name": "hello"}));
@@ -367,6 +391,7 @@ mod tests {
             rename: None,
             filter: None,
             truncate: Some(HashMap::from([("count".into(), 3)])),
+            parsed_filter: None,
         });
         let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, json!({"count": 12345}));
@@ -380,6 +405,7 @@ mod tests {
             rename: None,
             filter: None,
             truncate: Some(HashMap::from([("missing".into(), 5)])),
+            parsed_filter: None,
         });
         let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, json!({"a": "hello"}));
@@ -393,6 +419,7 @@ mod tests {
             rename: None,
             filter: None,
             truncate: Some(HashMap::from([("msg".into(), 20)])),
+            parsed_filter: None,
         });
         let result = apply_transform(data, &t, true).unwrap();
         assert_eq!(result, json!({"msg": "first line\n\nsecond paragraph"}));

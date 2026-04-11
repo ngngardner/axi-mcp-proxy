@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
-use super::types::Config;
+use super::types::{Config, FilterExpr};
 
 // Static regex compilation — pattern is a constant literal, expect cannot fail
 #[allow(clippy::expect_used)]
@@ -53,7 +53,7 @@ pub fn load(path: &Path) -> Result<Config> {
     let mut config: Config = Config::deserialize(value).context("failed to deserialize config")?;
 
     resolve_env_vars(&mut config);
-    validate(&config)?;
+    validate(&mut config)?;
 
     Ok(config)
 }
@@ -84,7 +84,8 @@ fn expand_env(pattern: &Regex, s: &str) -> String {
 /// Structural validation that Nickel contracts don't cover:
 /// - Step upstream references exist
 /// - No dependency cycles
-fn validate(config: &Config) -> Result<()> {
+fn validate(config: &mut Config) -> Result<()> {
+    // Immutable checks first
     for (tool_name, tool) in &config.tools {
         for (i, step) in tool.steps.iter().enumerate() {
             if !config.upstreams.contains_key(&step.upstream) {
@@ -107,6 +108,23 @@ fn validate(config: &Config) -> Result<()> {
                     ns.command,
                     referenced_tool
                 );
+            }
+        }
+    }
+
+    // Mutable parsing pass
+    for (tool_name, tool) in &mut config.tools {
+        for (i, step) in tool.steps.iter_mut().enumerate() {
+            if let Some(ref mut transform) = step.transform
+                && let Some(ref filter_str) = transform.filter
+            {
+                let parsed = FilterExpr::parse(filter_str).with_context(|| {
+                    format!(
+                        "tool {tool_name:?} step {i} ({:?}): invalid filter",
+                        step.name
+                    )
+                })?;
+                transform.parsed_filter = Some(parsed);
             }
         }
     }
@@ -342,7 +360,7 @@ let axi = import "axi.ncl" in
 
     #[test]
     fn test_validate_unknown_upstream_ref() {
-        let config = Config {
+        let mut config = Config {
             upstreams: std::collections::HashMap::from([(
                 "svc".to_string(),
                 super::super::types::UpstreamConfig {
@@ -374,7 +392,7 @@ let axi = import "axi.ncl" in
                 },
             )]),
         };
-        let result = validate(&config);
+        let result = validate(&mut config);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("unknown upstream"));
     }
@@ -462,7 +480,7 @@ let axi = import "axi.ncl" in
 
     #[test]
     fn test_validate_unknown_next_step_tool() {
-        let config = Config {
+        let mut config = Config {
             upstreams: std::collections::HashMap::from([(
                 "svc".to_string(),
                 super::super::types::UpstreamConfig {
@@ -498,7 +516,7 @@ let axi = import "axi.ncl" in
                 },
             )]),
         };
-        let result = validate(&config);
+        let result = validate(&mut config);
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -589,5 +607,39 @@ let axi = import "axi.ncl" in
         let path = write_ncl(dir.path(), "config.ncl", config);
         let result = load(&path);
         assert!(result.is_err(), "invalid auth type should fail: {result:?}");
+    }
+
+    #[test]
+    fn test_validate_rejects_invalid_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        write_axi_ncl(dir.path());
+        let config = r#"
+let axi = import "axi.ncl" in
+{
+  upstreams = { svc = { url = "http://localhost:8080" } },
+  tools = {
+    search = {
+      description = "search tool",
+      steps = [{
+        name = "s1",
+        upstream = "svc",
+        tool = "find",
+        args = {},
+        transform = { filter = "bad expression" },
+      }],
+      output_fields = [{ name = "id", description = "ID" }],
+      aggregates = [{ label = "x", value = "count($step.s1)" }],
+      next_steps = [{ command = "search", description = "y" }],
+      empty_message = "none",
+    },
+  },
+} | axi.Config
+"#;
+        let path = write_ncl(dir.path(), "config.ncl", config);
+        let result = load(&path);
+        assert!(
+            result.is_err(),
+            "invalid filter should fail at load: {result:?}"
+        );
     }
 }

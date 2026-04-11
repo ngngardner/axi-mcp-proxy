@@ -130,12 +130,55 @@ pub struct StepConfig {
     pub transform: Option<TransformConfig>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterOp {
+    Eq,
+    Ne,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilterExpr {
+    pub field: String,
+    pub op: FilterOp,
+    pub value: String,
+}
+
+impl FilterExpr {
+    /// Parse a filter expression like `field == "value"` or `field != "value"`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the expression doesn't match a supported pattern.
+    pub fn parse(expr: &str) -> anyhow::Result<Self> {
+        if let Some((left, right)) = expr.split_once("!=") {
+            return Ok(Self {
+                field: left.trim().to_owned(),
+                op: FilterOp::Ne,
+                value: right.trim().trim_matches('"').to_owned(),
+            });
+        }
+        if let Some((left, right)) = expr.split_once("==") {
+            return Ok(Self {
+                field: left.trim().to_owned(),
+                op: FilterOp::Eq,
+                value: right.trim().trim_matches('"').to_owned(),
+            });
+        }
+        anyhow::bail!(
+            "unsupported filter expression: {expr:?} (expected field == \"value\" or field != \"value\")"
+        )
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct TransformConfig {
     pub pick: Option<Vec<String>>,
     pub rename: Option<HashMap<String, String>>,
     pub filter: Option<String>,
     pub truncate: Option<HashMap<String, usize>>,
+    /// Parsed from `filter` at load time. Not deserialized.
+    #[serde(skip)]
+    pub parsed_filter: Option<FilterExpr>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -163,4 +206,33 @@ pub struct NextStepConfig {
     pub command: String,
     pub description: String,
     pub when: Option<String>,
+}
+
+#[cfg(test)]
+// Tests use unwrap for brevity — panics are the desired failure mode
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_filter_expr_parse_eq() {
+        let expr = FilterExpr::parse(r#"state == "open""#).unwrap();
+        assert_eq!(expr.field, "state");
+        assert_eq!(expr.op, FilterOp::Eq);
+        assert_eq!(expr.value, "open");
+    }
+
+    #[test]
+    fn test_filter_expr_parse_ne() {
+        let expr = FilterExpr::parse(r#"state != "closed""#).unwrap();
+        assert_eq!(expr.field, "state");
+        assert_eq!(expr.op, FilterOp::Ne);
+        assert_eq!(expr.value, "closed");
+    }
+
+    #[test]
+    fn test_filter_expr_parse_invalid() {
+        let result = FilterExpr::parse("bad expression");
+        assert!(result.is_err());
+    }
 }
