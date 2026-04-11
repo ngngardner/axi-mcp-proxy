@@ -45,8 +45,7 @@ let axi = import "axi.ncl" in
         { label = "open issues", value = "count($step.issues)" },
       ],
       next_steps = [
-        { command = "get_pull_request {owner} {repo} <number>", description = "PR details" },
-        { command = "get_issue {owner} {repo} <number>",        description = "issue details" },
+        { command = "repo_context {owner} {repo}", description = "refresh repo overview" },
       ],
       empty_message = "No open PRs or issues found.",
       max_items = 10,

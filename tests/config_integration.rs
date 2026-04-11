@@ -28,3 +28,14 @@ fn test_example_repo_context_loads() {
     let result = prog.eval_full_for_export();
     assert!(result.is_ok(), "example config should evaluate: {result:?}");
 }
+
+#[test]
+fn test_example_repo_context_full_load() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("lib/example_repo_context.ncl");
+
+    let config = axi_mcp_proxy::config::load(&path);
+    assert!(
+        config.is_ok(),
+        "example config should pass full load() validation: {config:?}"
+    );
+}
