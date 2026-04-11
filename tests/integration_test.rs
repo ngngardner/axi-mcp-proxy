@@ -10,6 +10,7 @@
     clippy::too_many_lines
 )]
 
+use axi_mcp_proxy::config::AggregateExpr;
 use axi_mcp_proxy::config::*;
 use axi_mcp_proxy::proxy::server::ProxyServer;
 use axi_mcp_proxy::upstream::pool::Pool;
@@ -352,10 +353,12 @@ async fn test_repo_context() {
                 AggregateConfig {
                     label: "open PRs".into(),
                     value: "count($step.prs)".into(),
+                    parsed_value: Some(AggregateExpr::Count("prs".into())),
                 },
                 AggregateConfig {
                     label: "open issues".into(),
                     value: "count($step.issues)".into(),
+                    parsed_value: Some(AggregateExpr::Count("issues".into())),
                 },
             ],
             next_steps: vec![NextStepConfig {
@@ -402,6 +405,7 @@ async fn test_help_flag() {
             aggregates: vec![AggregateConfig {
                 label: "results".into(),
                 value: "count($step.search)".into(),
+                parsed_value: Some(AggregateExpr::Count("search".into())),
             }],
             next_steps: vec![NextStepConfig {
                 command: "details <id>".into(),
@@ -487,10 +491,12 @@ async fn test_multi_upstream() {
                 AggregateConfig {
                     label: "open PRs".into(),
                     value: "count($step.prs)".into(),
+                    parsed_value: Some(AggregateExpr::Count("prs".into())),
                 },
                 AggregateConfig {
                     label: "recent builds".into(),
                     value: "count($step.builds)".into(),
+                    parsed_value: Some(AggregateExpr::Count("builds".into())),
                 },
             ],
             next_steps: vec![NextStepConfig {
@@ -549,6 +555,7 @@ async fn test_empty_results() {
             aggregates: vec![AggregateConfig {
                 label: "items".into(),
                 value: "count($step.results)".into(),
+                parsed_value: Some(AggregateExpr::Count("results".into())),
             }],
             next_steps: vec![NextStepConfig {
                 command: "x".into(),
@@ -600,6 +607,7 @@ async fn test_transform_filter() {
             aggregates: vec![AggregateConfig {
                 label: "open tasks".into(),
                 value: "count($step.tasks)".into(),
+                parsed_value: Some(AggregateExpr::Count("tasks".into())),
             }],
             next_steps: vec![NextStepConfig {
                 command: "x".into(),
@@ -668,6 +676,7 @@ async fn test_transform_rename() {
             aggregates: vec![AggregateConfig {
                 label: "PRs".into(),
                 value: "count($step.prs)".into(),
+                parsed_value: Some(AggregateExpr::Count("prs".into())),
             }],
             next_steps: vec![NextStepConfig {
                 command: "x".into(),
@@ -725,6 +734,7 @@ async fn test_step_dependency() {
             aggregates: vec![AggregateConfig {
                 label: "steps".into(),
                 value: "count($step.fetch_id)".into(),
+                parsed_value: Some(AggregateExpr::Count("fetch_id".into())),
             }],
             next_steps: vec![NextStepConfig {
                 command: "x".into(),
@@ -768,10 +778,12 @@ async fn test_sum_aggregate() {
                 AggregateConfig {
                     label: "items".into(),
                     value: "count($step.scores)".into(),
+                    parsed_value: Some(AggregateExpr::Count("scores".into())),
                 },
                 AggregateConfig {
                     label: "total".into(),
                     value: "sum($step.scores)".into(),
+                    parsed_value: Some(AggregateExpr::Sum("scores".into())),
                 },
             ],
             next_steps: vec![NextStepConfig {
@@ -887,10 +899,12 @@ async fn test_run_tool_configured_tool() {
                 AggregateConfig {
                     label: "open PRs".into(),
                     value: "count($step.prs)".into(),
+                    parsed_value: Some(AggregateExpr::Count("prs".into())),
                 },
                 AggregateConfig {
                     label: "open issues".into(),
                     value: "count($step.issues)".into(),
+                    parsed_value: Some(AggregateExpr::Count("issues".into())),
                 },
             ],
             next_steps: vec![NextStepConfig {
@@ -1005,6 +1019,7 @@ async fn test_wire_echo() {
             aggregates: vec![AggregateConfig {
                 label: "x".into(),
                 value: "count($step.echo)".into(),
+                parsed_value: Some(AggregateExpr::Count("echo".into())),
             }],
             next_steps: vec![NextStepConfig {
                 command: "x".into(),
@@ -1084,6 +1099,7 @@ async fn test_wire_get_sum() {
             aggregates: vec![AggregateConfig {
                 label: "x".into(),
                 value: "count($step.sum)".into(),
+                parsed_value: Some(AggregateExpr::Count("sum".into())),
             }],
             next_steps: vec![NextStepConfig {
                 command: "x".into(),

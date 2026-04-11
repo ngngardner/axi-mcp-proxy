@@ -95,6 +95,7 @@ mod tests {
             aggregates: vec![AggregateConfig {
                 label: "results".into(),
                 value: "count($step.s1)".into(),
+                parsed_value: Some(AggregateExpr::Count("s1".into())),
             }],
             next_steps: vec![],
             empty_message: "No results.".into(),

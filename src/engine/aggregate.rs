@@ -1,59 +1,43 @@
-use anyhow::{Result, bail};
+use crate::config::AggregateExpr;
+use crate::engine::resolve::traverse_path;
+use anyhow::Result;
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::engine::resolve::traverse_path;
-
-/// Evaluate an aggregate expression against step results.
-/// Supports: `count($step.X)`, `sum($step.X.field)`, `$step.X.Y` (direct ref)
+/// Evaluate a pre-parsed aggregate expression against step results.
 ///
 /// # Errors
 ///
-/// Returns an error if the referenced step is not found or the expression is unknown.
-// HashMap is only used internally — no need to be generic over the hasher
+/// Returns an error if the referenced step is not found.
 #[allow(clippy::implicit_hasher)]
-pub fn eval_aggregate(expr: &str, results: &HashMap<String, Value>) -> Result<Value> {
-    if let Some(inner) = expr
-        .strip_prefix("count(")
-        .and_then(|s| s.strip_suffix(')'))
-    {
-        let val = resolve_ref(inner, results)?;
-        let count = match &val {
-            Value::Array(arr) => arr.len(),
-            Value::Null
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Object(_) => 0,
-        };
-        return Ok(Value::Number(count.into()));
+pub fn eval_aggregate(expr: &AggregateExpr, results: &HashMap<String, Value>) -> Result<Value> {
+    match expr {
+        AggregateExpr::Count(path) => {
+            let val = traverse_path(path, results)?;
+            let count = match &val {
+                Value::Array(arr) => arr.len(),
+                Value::Null
+                | Value::Bool(_)
+                | Value::Number(_)
+                | Value::String(_)
+                | Value::Object(_) => 0,
+            };
+            Ok(Value::Number(count.into()))
+        }
+        AggregateExpr::Sum(path) => {
+            let val = traverse_path(path, results)?;
+            let sum = match &val {
+                Value::Array(arr) => arr.iter().filter_map(Value::as_f64).sum::<f64>(),
+                Value::Null
+                | Value::Bool(_)
+                | Value::Number(_)
+                | Value::String(_)
+                | Value::Object(_) => 0.0,
+            };
+            Ok(serde_json::json!(sum))
+        }
+        AggregateExpr::Direct(path) => traverse_path(path, results),
     }
-
-    if let Some(inner) = expr.strip_prefix("sum(").and_then(|s| s.strip_suffix(')')) {
-        let val = resolve_ref(inner, results)?;
-        let sum = match &val {
-            Value::Array(arr) => arr.iter().filter_map(Value::as_f64).sum::<f64>(),
-            Value::Null
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Object(_) => 0.0,
-        };
-        return Ok(serde_json::json!(sum));
-    }
-
-    if expr.starts_with("$step.") {
-        return resolve_ref(expr, results);
-    }
-
-    bail!("unknown aggregate expression: {expr}");
-}
-
-fn resolve_ref(reference: &str, results: &HashMap<String, Value>) -> Result<Value> {
-    let path = reference
-        .strip_prefix("$step.")
-        .ok_or_else(|| anyhow::anyhow!("invalid reference: {reference}"))?;
-    traverse_path(path, results)
 }
 
 #[cfg(test)]
@@ -66,62 +50,56 @@ mod tests {
     #[test]
     fn test_count() {
         let results: HashMap<String, Value> = [("items".to_string(), json!([1, 2, 3]))].into();
-        let val = eval_aggregate("count($step.items)", &results).unwrap();
+        let expr = AggregateExpr::Count("items".into());
+        let val = eval_aggregate(&expr, &results).unwrap();
         assert_eq!(val, json!(3));
     }
 
     #[test]
     fn test_count_non_array() {
         let results: HashMap<String, Value> = [("x".to_string(), json!("not an array"))].into();
-        let val = eval_aggregate("count($step.x)", &results).unwrap();
+        let expr = AggregateExpr::Count("x".into());
+        let val = eval_aggregate(&expr, &results).unwrap();
         assert_eq!(val, json!(0));
     }
 
     #[test]
     fn test_sum() {
         let results: HashMap<String, Value> = [("nums".to_string(), json!([1.0, 2.5, 3.5]))].into();
-        let val = eval_aggregate("sum($step.nums)", &results).unwrap();
+        let expr = AggregateExpr::Sum("nums".into());
+        let val = eval_aggregate(&expr, &results).unwrap();
         assert_eq!(val, json!(7.0));
     }
 
     #[test]
     fn test_sum_non_array() {
         let results: HashMap<String, Value> = [("x".to_string(), json!("not an array"))].into();
-        let val = eval_aggregate("sum($step.x)", &results).unwrap();
+        let expr = AggregateExpr::Sum("x".into());
+        let val = eval_aggregate(&expr, &results).unwrap();
         assert_eq!(val, json!(0.0));
     }
 
     #[test]
     fn test_direct_ref() {
         let results: HashMap<String, Value> = [("s1".to_string(), json!({"status": "ok"}))].into();
-        let val = eval_aggregate("$step.s1.status", &results).unwrap();
+        let expr = AggregateExpr::Direct("s1.status".into());
+        let val = eval_aggregate(&expr, &results).unwrap();
         assert_eq!(val, json!("ok"));
-    }
-
-    #[test]
-    fn test_unknown_expr() {
-        let results = HashMap::new();
-        let result = eval_aggregate("bad_expr", &results);
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("unknown aggregate")
-        );
     }
 
     #[test]
     fn test_count_missing_step() {
         let results = HashMap::new();
-        let result = eval_aggregate("count($step.missing)", &results);
+        let expr = AggregateExpr::Count("missing".into());
+        let result = eval_aggregate(&expr, &results);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_direct_ref_missing() {
         let results = HashMap::new();
-        let result = eval_aggregate("$step.missing.field", &results);
+        let expr = AggregateExpr::Direct("missing.field".into());
+        let result = eval_aggregate(&expr, &results);
         assert!(result.is_err());
     }
 }

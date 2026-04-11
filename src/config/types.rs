@@ -170,6 +170,47 @@ impl FilterExpr {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AggregateExpr {
+    /// `count($step.X)` — count array length
+    Count(String),
+    /// `sum($step.X.field)` — sum numeric values
+    Sum(String),
+    /// `$step.X.Y` — direct reference
+    Direct(String),
+}
+
+impl AggregateExpr {
+    /// Parse an aggregate expression.
+    ///
+    /// Supports: `count($step.X)`, `sum($step.X.field)`, `$step.X.Y`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the expression doesn't match a supported pattern.
+    pub fn parse(expr: &str) -> anyhow::Result<Self> {
+        if let Some(inner) = expr
+            .strip_prefix("count(")
+            .and_then(|s| s.strip_suffix(')'))
+        {
+            let path = inner.strip_prefix("$step.").ok_or_else(|| {
+                anyhow::anyhow!("count() argument must be a $step reference: {expr:?}")
+            })?;
+            return Ok(Self::Count(path.to_owned()));
+        }
+        if let Some(inner) = expr.strip_prefix("sum(").and_then(|s| s.strip_suffix(')')) {
+            let path = inner.strip_prefix("$step.").ok_or_else(|| {
+                anyhow::anyhow!("sum() argument must be a $step reference: {expr:?}")
+            })?;
+            return Ok(Self::Sum(path.to_owned()));
+        }
+        if let Some(path) = expr.strip_prefix("$step.") {
+            return Ok(Self::Direct(path.to_owned()));
+        }
+        anyhow::bail!("unsupported aggregate expression: {expr:?}")
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct TransformConfig {
     pub pick: Option<Vec<String>>,
@@ -199,6 +240,9 @@ const fn default_true() -> bool {
 pub struct AggregateConfig {
     pub label: String,
     pub value: String,
+    /// Parsed from `value` at load time. Not deserialized.
+    #[serde(skip)]
+    pub parsed_value: Option<AggregateExpr>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -233,6 +277,30 @@ mod tests {
     #[test]
     fn test_filter_expr_parse_invalid() {
         let result = FilterExpr::parse("bad expression");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_aggregate_expr_parse_count() {
+        let expr = AggregateExpr::parse("count($step.items)").unwrap();
+        assert_eq!(expr, AggregateExpr::Count("items".into()));
+    }
+
+    #[test]
+    fn test_aggregate_expr_parse_sum() {
+        let expr = AggregateExpr::parse("sum($step.nums)").unwrap();
+        assert_eq!(expr, AggregateExpr::Sum("nums".into()));
+    }
+
+    #[test]
+    fn test_aggregate_expr_parse_direct() {
+        let expr = AggregateExpr::parse("$step.s1.status").unwrap();
+        assert_eq!(expr, AggregateExpr::Direct("s1.status".into()));
+    }
+
+    #[test]
+    fn test_aggregate_expr_parse_invalid() {
+        let result = AggregateExpr::parse("bad_expr");
         assert!(result.is_err());
     }
 }

@@ -27,7 +27,9 @@ pub fn format(cfg: &ToolConfig, results: &HashMap<String, Value>) -> Result<Stri
         // Convert results to use Value strings for aggregate eval
         let mut summary_parts = Vec::new();
         for agg in &cfg.aggregates {
-            if let Ok(val) = eval_aggregate(&agg.value, results) {
+            if let Some(ref parsed) = agg.parsed_value
+                && let Ok(val) = eval_aggregate(parsed, results)
+            {
                 summary_parts.push(format!("{} {}", value_display(&val), agg.label));
             }
         }
@@ -149,6 +151,7 @@ fn value_display(v: &Value) -> String {
 )]
 mod tests {
     use super::*;
+    use crate::config::AggregateExpr;
     use crate::config::*;
     use serde_json::json;
 
@@ -169,6 +172,7 @@ mod tests {
             aggregates: vec![AggregateConfig {
                 label: "results".into(),
                 value: "count($step.s1)".into(),
+                parsed_value: Some(AggregateExpr::Count("s1".into())),
             }],
             next_steps: vec![NextStepConfig {
                 command: "detail <id>".into(),
