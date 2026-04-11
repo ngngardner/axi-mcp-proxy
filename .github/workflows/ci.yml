@@ -17,6 +17,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install
       - run: cargo install ast-grep --locked
+      - run: cargo install cargo-deny --locked
       - uses: j178/prek-action@v2
         with:
           extra-args: --all-files
