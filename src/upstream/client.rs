@@ -9,7 +9,7 @@ use rmcp::model::{
 use rmcp::service::RunningService;
 use tokio::sync::OnceCell;
 
-use crate::config::{AuthConfig, UpstreamConfig};
+use crate::config::{AuthConfig, AuthType, UpstreamConfig};
 
 type ClientService = RunningService<rmcp::service::RoleClient, rmcp::model::ClientInfo>;
 
@@ -122,8 +122,9 @@ impl std::fmt::Debug for Client {
 fn build_http_client(auth: &AuthConfig) -> Result<reqwest::Client> {
     let mut headers = reqwest::header::HeaderMap::new();
 
-    match auth.auth_type.as_str() {
-        "bearer" => {
+    match auth.auth_type {
+        AuthType::None => {}
+        AuthType::Bearer => {
             if let Some(ref token) = auth.token {
                 headers.insert(
                     reqwest::header::AUTHORIZATION,
@@ -133,7 +134,7 @@ fn build_http_client(auth: &AuthConfig) -> Result<reqwest::Client> {
                 );
             }
         }
-        "basic" => {
+        AuthType::Basic => {
             if let Some(ref token) = auth.token {
                 use base64::Engine;
                 let encoded = base64::engine::general_purpose::STANDARD.encode(token.as_bytes());
@@ -145,7 +146,7 @@ fn build_http_client(auth: &AuthConfig) -> Result<reqwest::Client> {
                 );
             }
         }
-        "header" => {
+        AuthType::Header => {
             if let Some(ref h) = auth.headers {
                 for (k, v) in h {
                     headers.insert(
@@ -156,7 +157,6 @@ fn build_http_client(auth: &AuthConfig) -> Result<reqwest::Client> {
                 }
             }
         }
-        _ => {}
     }
 
     reqwest::Client::builder()

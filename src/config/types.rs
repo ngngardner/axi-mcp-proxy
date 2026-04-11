@@ -17,10 +17,38 @@ pub struct UpstreamConfig {
     pub auth: AuthConfig,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AuthType {
+    #[default]
+    None,
+    Bearer,
+    Basic,
+    Header,
+}
+
+impl<'de> Deserialize<'de> for AuthType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "none" => Ok(Self::None),
+            "bearer" => Ok(Self::Bearer),
+            "basic" => Ok(Self::Basic),
+            "header" => Ok(Self::Header),
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &["none", "bearer", "basic", "header"],
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct AuthConfig {
     #[serde(rename = "type", default)]
-    pub auth_type: String,
+    pub auth_type: AuthType,
     #[serde(default)]
     pub token: Option<String>,
     #[serde(default)]

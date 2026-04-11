@@ -7,6 +7,10 @@ let MaxVisibleFields = std.contract.from_predicate (fun fields =>
   std.array.length visible >= 1 && std.array.length visible <= 6
 ) in
 
+let AuthType = std.contract.from_predicate (fun x =>
+  x == "none" || x == "bearer" || x == "basic" || x == "header"
+) in
+
 {
   Step = {
     name | String,
@@ -49,7 +53,7 @@ let MaxVisibleFields = std.contract.from_predicate (fun fields =>
     args | Array String | default = [],
     auth
       | {
-        type | String,
+        type | AuthType,
         token | String | optional,
         headers | { _ : String } | optional,
       }
