@@ -109,6 +109,18 @@ fn validate(config: &Config) -> Result<()> {
         }
 
         check_cycles(&tool.steps).with_context(|| format!("tool {tool_name:?}"))?;
+
+        // Validate next_steps reference known tools
+        for ns in &tool.next_steps {
+            let referenced_tool = ns.command.split_whitespace().next().unwrap_or("");
+            if !config.tools.contains_key(referenced_tool) {
+                bail!(
+                    "tool {tool_name:?} next_step: command {:?} references unknown tool {:?}",
+                    ns.command,
+                    referenced_tool
+                );
+            }
+        }
     }
 
     Ok(())
@@ -216,7 +228,7 @@ let axi = import "axi.ncl" in
         { label = "results", value = "count($step.s1)" },
       ],
       next_steps = [
-        { command = "detail <id>", description = "View details" },
+        { command = "search <query>", description = "Search again" },
       ],
       empty_message = "No results.",
     },
@@ -450,6 +462,57 @@ let axi = import "axi.ncl" in
         let result = check_cycles(&steps);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cycle"));
+    }
+
+    #[test]
+    fn test_validate_unknown_next_step_tool() {
+        let config = Config {
+            upstreams: std::collections::HashMap::from([(
+                "svc".to_string(),
+                super::super::types::UpstreamConfig {
+                    url: Some("http://localhost".to_string()),
+                    cmd: None,
+                    args: vec![],
+                    auth: Default::default(),
+                },
+            )]),
+            tools: std::collections::HashMap::from([(
+                "search".to_string(),
+                super::super::types::ToolConfig {
+                    description: "d".to_string(),
+                    detailed_help: None,
+                    parameters: vec![],
+                    steps: vec![super::super::types::StepConfig {
+                        name: "s1".to_string(),
+                        upstream: "svc".to_string(),
+                        tool: "x".to_string(),
+                        args: Default::default(),
+                        depends_on: vec![],
+                        transform: None,
+                    }],
+                    output_fields: vec![],
+                    aggregates: vec![],
+                    next_steps: vec![super::super::types::NextStepConfig {
+                        command: "nonexistent_tool arg1".to_string(),
+                        description: "bad ref".to_string(),
+                        when: None,
+                    }],
+                    empty_message: "none".to_string(),
+                    max_items: 10,
+                },
+            )]),
+        };
+        let result = validate(&config);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("unknown tool"),
+            "expected 'unknown tool' in: {msg}"
+        );
+        assert!(
+            msg.contains("nonexistent_tool"),
+            "expected tool name in: {msg}"
+        );
     }
 
     #[test]

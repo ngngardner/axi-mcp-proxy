@@ -70,9 +70,8 @@ let axi = import "axi.ncl" in
         { label = "open issues", value = "count($step.issues)" },
       ],
       next_steps = [
-        { command = "get_pull_request {owner} {repo} <number>", description = "PR details" },
-        { command = "get_issue {owner} {repo} <number>",        description = "issue details" },
-        { command = "workflow_status {owner} {repo}",            description = "CI run details" },
+        { command = "workflow_status {owner} {repo}", description = "CI run details" },
+        { command = "check",                          description = "run CI checks locally" },
       ],
       empty_message = "No open PRs or issues found.",
       max_items = 10,
