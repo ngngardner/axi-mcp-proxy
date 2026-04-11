@@ -69,10 +69,22 @@ fn build_body(cfg: &ToolConfig, results: &HashMap<String, Value>) -> String {
         if is_empty(data) {
             continue;
         }
-        let truncated = truncate_array(data, cfg.max_items.try_into().unwrap_or(usize::MAX));
-        let encoded = toon::encode(&truncated);
-        if !encoded.is_empty() {
-            sections.push(encoded);
+        // Plain strings (e.g. from run_process stdout) are passed through
+        // directly — TOON encoding would JSON-escape newlines and add quotes.
+        let rendered = match data {
+            Value::String(s) => s.clone(),
+            Value::Null
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::Array(_)
+            | Value::Object(_) => {
+                let truncated =
+                    truncate_array(data, cfg.max_items.try_into().unwrap_or(usize::MAX));
+                toon::encode(&truncated)
+            }
+        };
+        if !rendered.is_empty() {
+            sections.push(rendered);
         }
     }
 
@@ -102,6 +114,12 @@ fn is_empty(v: &Value) -> bool {
 
 fn value_display(v: &Value) -> String {
     match v {
+        Value::String(s) if s.contains('\n') => {
+            // Multi-line strings (e.g. stdout from run_process) are shown as a
+            // line count rather than dumped verbatim into the summary line.
+            let lines = s.lines().count();
+            format!("{lines} lines")
+        }
         Value::String(s) => s.clone(),
         Value::Number(n) => {
             if let Some(f) = n.as_f64() {

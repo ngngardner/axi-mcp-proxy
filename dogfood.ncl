@@ -72,6 +72,7 @@ let axi = import "axi.ncl" in
       next_steps = [
         { command = "workflow_status {owner} {repo}", description = "CI run details" },
         { command = "check",                          description = "run CI checks locally" },
+        { command = "search {pattern}",               description = "search code with ripgrep" }
       ],
       empty_message = "No open PRs or issues found.",
       max_items = 10,
@@ -133,6 +134,33 @@ let axi = import "axi.ncl" in
         { command = "check", description = "re-run checks after fixes" },
       ],
       empty_message = "No output from checks.",
+    },
+
+    search = {
+      description = "Search code with ripgrep — find patterns across files",
+      detailed_help = "Searches the codebase using ripgrep (rg). Returns file:line:content matches.",
+      steps = [
+        {
+          name = "results",
+          upstream = "shell",
+          tool = "run_process",
+          args = { argv = ["rg", "-n", "--no-heading", "$param.pattern", "."] },
+        },
+      ],
+      parameters = [
+        { name = "pattern", type = "string", description = "Search pattern (regex)", required = true },
+      ],
+      output_fields = [
+        { name = "output", description = "Search results" },
+      ],
+      aggregates = [
+        { label = "results", value = "$step.results" },
+      ],
+      next_steps = [
+        { command = "search {pattern}", description = "refine search" },
+      ],
+      empty_message = "No matches found.",
+      max_items = 50,
     },
   },
 } | axi.Config
