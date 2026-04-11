@@ -19,6 +19,7 @@ let MaxVisibleFields = std.contract.from_predicate (fun fields =>
         pick | Array String | optional,
         rename | { _ : String } | optional,
         filter | String | optional,
+        truncate | { _ : Number } | optional,
       }
       | optional,
   },

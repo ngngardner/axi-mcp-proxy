@@ -108,11 +108,16 @@ impl ServerHandler for ProxyServer {
             ))]));
         }
 
-        // Build params from args
-        let params: HashMap<String, Value> = args;
+        // Extract built-in flags before passing remaining args as params
+        let full = matches!(args.get("full"), Some(Value::Bool(true)));
+
+        // Build params from args (remove built-in flags so they don't leak to steps)
+        let mut params = args;
+        params.remove("help");
+        params.remove("full");
 
         // Execute steps
-        match self.execute_tool(tool_cfg, &params).await {
+        match self.execute_tool(tool_cfg, &params, full).await {
             Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "execution failed: {e}"
@@ -153,13 +158,15 @@ impl ProxyServer {
             return Ok(text);
         }
 
+        let full = matches!(params.get("full"), Some(Value::Bool(true)));
+
         let tool_cfg = self
             .config
             .tools
             .get(tool_name)
             .ok_or_else(|| anyhow::anyhow!("unknown tool: {tool_name}"))?;
 
-        self.execute_tool(tool_cfg, params).await
+        self.execute_tool(tool_cfg, params, full).await
     }
 
     // HashMap is only used internally — no need to be generic over the hasher
@@ -168,6 +175,7 @@ impl ProxyServer {
         &self,
         tool_cfg: &crate::config::ToolConfig,
         params: &HashMap<String, Value>,
+        full: bool,
     ) -> anyhow::Result<String> {
         let layers = graph::build_layers(&tool_cfg.steps)?;
         let mut results: HashMap<String, Value> = HashMap::new();
@@ -186,7 +194,7 @@ impl ProxyServer {
                 handles.push(tokio::spawn(async move {
                     let call_result = pool.call_tool(&upstream, &tool, resolved_args).await?;
                     let raw_data = extract_result_data(&call_result);
-                    let data = apply_transform(raw_data, &transform)?;
+                    let data = apply_transform(raw_data, &transform, full)?;
                     Ok::<_, anyhow::Error>((step_name, data))
                 }));
             }
@@ -306,12 +314,19 @@ fn build_tool_schemas(config: &Config) -> Vec<Tool> {
             }
         }
 
-        // Add built-in help parameter
+        // Add built-in parameters
         properties.insert(
             "help".into(),
             serde_json::json!({
                 "type": "boolean",
                 "description": "Show help for this tool",
+            }),
+        );
+        properties.insert(
+            "full".into(),
+            serde_json::json!({
+                "type": "boolean",
+                "description": "Show full untruncated output",
             }),
         );
 

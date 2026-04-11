@@ -3,12 +3,14 @@ use serde_json::Value;
 
 use crate::config::TransformConfig;
 
-/// Apply pick, rename, and filter operations to data.
+/// Apply filter, pick, rename, and truncate operations to data.
+///
+/// When `full` is true, the truncate step is skipped (principle 3: `--full` escape hatch).
 ///
 /// # Errors
 ///
 /// Currently infallible but returns `Result` for future extensibility.
-pub fn apply_transform(data: Value, t: &Option<TransformConfig>) -> Result<Value> {
+pub fn apply_transform(data: Value, t: &Option<TransformConfig>, full: bool) -> Result<Value> {
     let Some(transform) = t else {
         return Ok(data);
     };
@@ -21,13 +23,7 @@ pub fn apply_transform(data: Value, t: &Option<TransformConfig>) -> Result<Value
             {
                 continue;
             }
-            let mut transformed = item;
-            if let Some(ref pick) = transform.pick {
-                transformed = apply_pick(transformed, pick);
-            }
-            if let Some(ref rename) = transform.rename {
-                transformed = apply_rename(transformed, rename);
-            }
+            let transformed = apply_item(item, transform, full);
             result.push(transformed);
         }
         return Ok(Value::Array(result));
@@ -40,6 +36,10 @@ pub fn apply_transform(data: Value, t: &Option<TransformConfig>) -> Result<Value
         return Ok(Value::Null);
     }
 
+    Ok(apply_item(data, transform, full))
+}
+
+fn apply_item(data: Value, transform: &TransformConfig, full: bool) -> Value {
     let mut result = data;
     if let Some(ref pick) = transform.pick {
         result = apply_pick(result, pick);
@@ -47,7 +47,10 @@ pub fn apply_transform(data: Value, t: &Option<TransformConfig>) -> Result<Value
     if let Some(ref rename) = transform.rename {
         result = apply_rename(result, rename);
     }
-    Ok(result)
+    if !full && let Some(ref truncate) = transform.truncate {
+        result = apply_truncate(result, truncate);
+    }
+    result
 }
 
 fn apply_pick(data: Value, fields: &[String]) -> Value {
@@ -90,6 +93,34 @@ fn apply_rename(data: Value, renames: &std::collections::HashMap<String, String>
         result.insert(new_key.clone(), v.clone());
     }
     Value::Object(result)
+}
+
+fn apply_truncate(data: Value, limits: &std::collections::HashMap<String, usize>) -> Value {
+    let Some(m) = data.as_object() else {
+        return data;
+    };
+    let mut result = m.clone();
+    for (field, &max) in limits {
+        let needs_truncate = result
+            .get(field)
+            .and_then(Value::as_str)
+            .is_some_and(|s| s.len() > max || s.contains('\n'));
+        if needs_truncate {
+            let s = result[field].as_str().unwrap_or_default();
+            result.insert(field.clone(), Value::String(truncate_string(s, max)));
+        }
+    }
+    Value::Object(result)
+}
+
+/// Truncate a string: first at the earliest newline, then at `max` chars.
+fn truncate_string(s: &str, max: usize) -> String {
+    let first_line = s.split('\n').next().unwrap_or(s);
+    if first_line.len() <= max {
+        return first_line.to_owned();
+    }
+    // Truncate at char boundary
+    first_line.chars().take(max).collect()
 }
 
 /// Evaluate a simple filter expression: "field == \"value\"" or "field != \"value\""
@@ -144,8 +175,9 @@ mod tests {
             pick: Some(vec!["id".into(), "name".into()]),
             rename: None,
             filter: None,
+            truncate: None,
         });
-        let result = apply_transform(data, &t).unwrap();
+        let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(
             result,
             json!([{"id": 1, "name": "a"}, {"id": 2, "name": "b"}])
@@ -159,8 +191,9 @@ mod tests {
             pick: None,
             rename: Some(HashMap::from([("old_name".into(), "new_name".into())])),
             filter: None,
+            truncate: None,
         });
-        let result = apply_transform(data, &t).unwrap();
+        let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, json!({"new_name": "value"}));
     }
 
@@ -171,8 +204,9 @@ mod tests {
             pick: None,
             rename: None,
             filter: Some(r#"state == "open""#.into()),
+            truncate: None,
         });
-        let result = apply_transform(data, &t).unwrap();
+        let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, json!([{"state": "open"}]));
     }
 
@@ -183,15 +217,16 @@ mod tests {
             pick: None,
             rename: None,
             filter: Some(r#"state != "closed""#.into()),
+            truncate: None,
         });
-        let result = apply_transform(data, &t).unwrap();
+        let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, json!([{"state": "open"}]));
     }
 
     #[test]
     fn test_nil_transform() {
         let data = json!({"a": 1});
-        let result = apply_transform(data.clone(), &None).unwrap();
+        let result = apply_transform(data.clone(), &None, false).unwrap();
         assert_eq!(result, data);
     }
 
@@ -202,8 +237,9 @@ mod tests {
             pick: None,
             rename: None,
             filter: Some(r#"state == "open""#.into()),
+            truncate: None,
         });
-        let result = apply_transform(data, &t).unwrap();
+        let result = apply_transform(data, &t, false).unwrap();
         assert_eq!(result, Value::Null);
     }
 
@@ -240,8 +276,9 @@ mod tests {
             pick: Some(vec!["number".into(), "user.login".into()]),
             rename: None,
             filter: None,
+            truncate: None,
         });
-        let result = apply_transform(data, &t).unwrap();
+        let result = apply_transform(data, &t, false).unwrap();
         // Every value should be a primitive (no nested objects/arrays)
         for item in result.as_array().unwrap() {
             for (_k, v) in item.as_object().unwrap() {
@@ -281,5 +318,83 @@ mod tests {
     #[test]
     fn test_filter_missing_field_not_equals() {
         assert!(eval_filter(&json!({"a": 1}), "b != \"1\""));
+    }
+
+    #[test]
+    fn test_truncate_at_max_len() {
+        let data = json!([{"sha": "abcdef1234567890", "msg": "short"}]);
+        let t = Some(TransformConfig {
+            pick: None,
+            rename: None,
+            filter: None,
+            truncate: Some(HashMap::from([("sha".into(), 7)])),
+        });
+        let result = apply_transform(data, &t, false).unwrap();
+        assert_eq!(result, json!([{"sha": "abcdef1", "msg": "short"}]));
+    }
+
+    #[test]
+    fn test_truncate_at_newline() {
+        let data = json!({"msg": "first line\n\nsecond paragraph"});
+        let t = Some(TransformConfig {
+            pick: None,
+            rename: None,
+            filter: None,
+            truncate: Some(HashMap::from([("msg".into(), 200)])),
+        });
+        let result = apply_transform(data, &t, false).unwrap();
+        assert_eq!(result, json!({"msg": "first line"}));
+    }
+
+    #[test]
+    fn test_truncate_no_op_when_shorter() {
+        let data = json!({"name": "hello"});
+        let t = Some(TransformConfig {
+            pick: None,
+            rename: None,
+            filter: None,
+            truncate: Some(HashMap::from([("name".into(), 100)])),
+        });
+        let result = apply_transform(data, &t, false).unwrap();
+        assert_eq!(result, json!({"name": "hello"}));
+    }
+
+    #[test]
+    fn test_truncate_non_string_unchanged() {
+        let data = json!({"count": 12345});
+        let t = Some(TransformConfig {
+            pick: None,
+            rename: None,
+            filter: None,
+            truncate: Some(HashMap::from([("count".into(), 3)])),
+        });
+        let result = apply_transform(data, &t, false).unwrap();
+        assert_eq!(result, json!({"count": 12345}));
+    }
+
+    #[test]
+    fn test_truncate_missing_field() {
+        let data = json!({"a": "hello"});
+        let t = Some(TransformConfig {
+            pick: None,
+            rename: None,
+            filter: None,
+            truncate: Some(HashMap::from([("missing".into(), 5)])),
+        });
+        let result = apply_transform(data, &t, false).unwrap();
+        assert_eq!(result, json!({"a": "hello"}));
+    }
+
+    #[test]
+    fn test_truncate_skipped_when_full() {
+        let data = json!({"msg": "first line\n\nsecond paragraph"});
+        let t = Some(TransformConfig {
+            pick: None,
+            rename: None,
+            filter: None,
+            truncate: Some(HashMap::from([("msg".into(), 20)])),
+        });
+        let result = apply_transform(data, &t, true).unwrap();
+        assert_eq!(result, json!({"msg": "first line\n\nsecond paragraph"}));
     }
 }

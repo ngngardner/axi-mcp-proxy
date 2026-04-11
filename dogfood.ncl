@@ -41,7 +41,10 @@ let axi = import "axi.ncl" in
           upstream = "github",
           tool = "list_commits",
           args = { owner = "$param.owner", repo = "$param.repo", perPage = 5 },
-          transform = { pick = ["sha", "commit.message", "author.login"] },
+          transform = {
+            pick = ["sha", "commit.message", "author.login"],
+            truncate = { "sha" = 7, "message" = 72 },
+          },
         },
         {
           name = "ci",

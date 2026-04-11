@@ -72,6 +72,7 @@ pub struct TransformConfig {
     pub pick: Option<Vec<String>>,
     pub rename: Option<HashMap<String, String>>,
     pub filter: Option<String>,
+    pub truncate: Option<HashMap<String, usize>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
