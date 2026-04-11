@@ -99,6 +99,8 @@ fn validate(config: &mut Config) -> Result<()> {
 
         check_cycles(&tool.steps).with_context(|| format!("tool {tool_name:?}"))?;
 
+        validate_arg_refs(tool_name, tool)?;
+
         // Validate next_steps reference known tools
         for ns in &tool.next_steps {
             let referenced_tool = ns.command.split_whitespace().next().unwrap_or("");
@@ -140,6 +142,120 @@ fn validate(config: &mut Config) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Validate that `$param.X` and `$step.Y` references in step args
+/// refer to declared parameter names and available step names.
+fn validate_arg_refs(tool_name: &str, tool: &super::types::ToolConfig) -> Result<()> {
+    let param_names: HashSet<&str> = tool.parameters.iter().map(|p| p.name.as_str()).collect();
+
+    // Steps available to step i: all steps defined before it + depends_on
+    let step_names: Vec<&str> = tool.steps.iter().map(|s| s.name.as_str()).collect();
+
+    for (i, step) in tool.steps.iter().enumerate() {
+        // Available steps: those defined before this one, plus explicit depends_on
+        let mut available: HashSet<&str> = step_names[..i].iter().copied().collect();
+        for dep in &step.depends_on {
+            available.insert(dep.as_str());
+        }
+
+        for (key, value) in &step.args {
+            check_value_refs(tool_name, &step.name, key, value, &param_names, &available)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Recursively scan a JSON value for `$param.X` and `$step.Y` references.
+fn check_value_refs(
+    tool_name: &str,
+    step_name: &str,
+    key: &str,
+    value: &serde_json::Value,
+    param_names: &HashSet<&str>,
+    step_names: &HashSet<&str>,
+) -> Result<()> {
+    match value {
+        serde_json::Value::String(s) => {
+            check_string_refs(tool_name, step_name, key, s, param_names, step_names)
+        }
+        serde_json::Value::Object(m) => {
+            for (k, v) in m {
+                check_value_refs(tool_name, step_name, k, v, param_names, step_names)?;
+            }
+            Ok(())
+        }
+        serde_json::Value::Array(arr) => {
+            for v in arr {
+                check_value_refs(tool_name, step_name, key, v, param_names, step_names)?;
+            }
+            Ok(())
+        }
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+            Ok(())
+        }
+    }
+}
+
+/// Scan a string for `$param.X` and `$step.Y` references and validate them.
+fn check_string_refs(
+    tool_name: &str,
+    step_name: &str,
+    key: &str,
+    s: &str,
+    param_names: &HashSet<&str>,
+    step_names: &HashSet<&str>,
+) -> Result<()> {
+    let mut rest = s;
+    while let Some(pos) = rest.find('$') {
+        rest = &rest[pos..];
+        if let Some(raw) = extract_ref(rest, "$param.") {
+            let name = raw.strip_suffix('?').unwrap_or(raw);
+            // Strip any dotted path segments — only the base name matters
+            let base = name.split('.').next().unwrap_or(name);
+            if !param_names.contains(base) {
+                bail!(
+                    "tool {tool_name:?} step {step_name:?} arg {key:?}: \
+                     references undeclared parameter {base:?}"
+                );
+            }
+            rest = &rest["$param.".len() + raw.len()..];
+        } else if let Some(raw) = extract_ref(rest, "$step.") {
+            let step_ref = raw.split('.').next().unwrap_or(raw);
+            if !step_names.contains(step_ref) {
+                bail!(
+                    "tool {tool_name:?} step {step_name:?} arg {key:?}: \
+                     references unavailable step {step_ref:?}"
+                );
+            }
+            rest = &rest["$step.".len() + raw.len()..];
+        } else {
+            rest = &rest[1..];
+        }
+    }
+    Ok(())
+}
+
+/// Extract a dotted identifier after a prefix like `$param.` or `$step.`.
+/// Similar to `try_extract_ref` in resolve.rs but simplified for validation.
+fn extract_ref<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
+    let after = s.strip_prefix(prefix)?;
+    let end = after
+        .find(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
+        .unwrap_or(after.len());
+    if end == 0 {
+        return None;
+    }
+    // Include a trailing `?` as optional-param marker
+    let has_trailing_q = after.as_bytes().get(end) == Some(&b'?')
+        && after
+            .as_bytes()
+            .get(end + 1)
+            .is_none_or(|&c| !c.is_ascii_alphanumeric() && c != b'_' && c != b'.');
+    let ref_end = if has_trailing_q { end + 1 } else { end };
+    let name = after[..ref_end].trim_end_matches('.');
+    if name.is_empty() { None } else { Some(name) }
 }
 
 fn check_cycles(steps: &[super::types::StepConfig]) -> Result<()> {
@@ -678,6 +794,117 @@ let axi = import "axi.ncl" in
         assert!(
             result.is_err(),
             "invalid aggregate should fail at load: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_rejects_unknown_param_ref() {
+        let dir = tempfile::tempdir().unwrap();
+        write_axi_ncl(dir.path());
+        let config = r#"
+let axi = import "axi.ncl" in
+{
+  upstreams = { svc = { url = "http://localhost:8080" } },
+  tools = {
+    search = {
+      description = "search tool",
+      steps = [{
+        name = "s1",
+        upstream = "svc",
+        tool = "find",
+        args = { query = "$param.nonexistent" },
+      }],
+      output_fields = [{ name = "id", description = "ID" }],
+      aggregates = [{ label = "x", value = "count($step.s1)" }],
+      next_steps = [{ command = "search", description = "y" }],
+      empty_message = "none",
+    },
+  },
+} | axi.Config
+"#;
+        let path = write_ncl(dir.path(), "config.ncl", config);
+        let result = load(&path);
+        assert!(
+            result.is_err(),
+            "unknown $param ref should fail at load: {result:?}"
+        );
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("undeclared parameter")
+        );
+    }
+
+    #[test]
+    fn test_validate_accepts_declared_param_ref() {
+        let dir = tempfile::tempdir().unwrap();
+        write_axi_ncl(dir.path());
+        let config = r#"
+let axi = import "axi.ncl" in
+{
+  upstreams = { svc = { url = "http://localhost:8080" } },
+  tools = {
+    search = {
+      description = "search tool",
+      parameters = [
+        { name = "query", type = "string", description = "Search query", required = true },
+      ],
+      steps = [{
+        name = "s1",
+        upstream = "svc",
+        tool = "find",
+        args = { q = "$param.query" },
+      }],
+      output_fields = [{ name = "id", description = "ID" }],
+      aggregates = [{ label = "x", value = "count($step.s1)" }],
+      next_steps = [{ command = "search", description = "y" }],
+      empty_message = "none",
+    },
+  },
+} | axi.Config
+"#;
+        let path = write_ncl(dir.path(), "config.ncl", config);
+        let result = load(&path);
+        assert!(
+            result.is_ok(),
+            "declared param ref should succeed: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_accepts_optional_param_ref() {
+        let dir = tempfile::tempdir().unwrap();
+        write_axi_ncl(dir.path());
+        let config = r#"
+let axi = import "axi.ncl" in
+{
+  upstreams = { svc = { url = "http://localhost:8080" } },
+  tools = {
+    search = {
+      description = "search tool",
+      parameters = [
+        { name = "filter", type = "string", description = "Optional filter", required = false },
+      ],
+      steps = [{
+        name = "s1",
+        upstream = "svc",
+        tool = "find",
+        args = { ft = "$param.filter?" },
+      }],
+      output_fields = [{ name = "id", description = "ID" }],
+      aggregates = [{ label = "x", value = "count($step.s1)" }],
+      next_steps = [{ command = "search", description = "y" }],
+      empty_message = "none",
+    },
+  },
+} | axi.Config
+"#;
+        let path = write_ncl(dir.path(), "config.ncl", config);
+        let result = load(&path);
+        assert!(
+            result.is_ok(),
+            "optional param ref should succeed: {result:?}"
         );
     }
 }
