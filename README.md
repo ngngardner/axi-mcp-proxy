@@ -132,3 +132,22 @@ The proxy fans out both steps in parallel and returns TOON-encoded output:
 ## Credits
 
 Based on [Axi](https://github.com/kunchenguid/axi/tree/main) by [@kunchenguid](https://github.com/kunchenguid).
+
+## Development
+
+### Prerequisites
+
+Install coverage tooling for the pre-push hook:
+
+```bash
+cargo install cargo-llvm-cov
+rustup component add llvm-tools-preview
+```
+
+### Running coverage locally
+
+```bash
+cargo llvm-cov --fail-under-lines 90
+```
+
+This runs all tests with LLVM instrumentation and fails if line coverage drops below 90%.

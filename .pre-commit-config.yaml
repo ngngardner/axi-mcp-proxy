@@ -35,9 +35,9 @@ repos:
     language: system
     pass_filenames: false
 
-  - id: cargo-test
-    name: cargo test
-    entry: cargo test
+  - id: cargo-llvm-cov
+    name: cargo llvm-cov
+    entry: cargo llvm-cov --fail-under-lines 90
     language: system
     pass_filenames: false
     stages: [pre-push]
