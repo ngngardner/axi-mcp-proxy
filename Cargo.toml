@@ -5,11 +5,9 @@ edition = "2024"
 license = "MIT"
 authors = ["Noah Gardner"]
 description = "Composing MCP proxy with Axi design principles"
-repository = "https://github.com/noardscode/axi-mcp-proxy"
+repository = "https://github.com/ngngardner/axi-mcp-proxy"
 keywords = ["mcp", "proxy", "cli"]
 categories = ["command-line-utilities"]
-
-# ── Strict lint configuration (wemake-level strictness) ──────────────
 
 [lints.rust]
 unsafe_code = "deny"
@@ -67,12 +65,12 @@ multiple_crate_versions = "allow"
 
 [dependencies]
 rmcp = { version = "0.1", features = [
-    "server",
-    "client",
-    "transport-io",
-    "transport-child-process",
-    "transport-sse",
-    "transport-sse-server",
+  "server",
+  "client",
+  "transport-io",
+  "transport-child-process",
+  "transport-sse",
+  "transport-sse-server",
 ] }
 nickel-lang-core = "0.17"
 serde = { version = "1", features = ["derive"] }
@@ -83,7 +81,9 @@ clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 regex = "1"
 base64 = "0.22"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+] }
 futures = "0.3"
 
 [dev-dependencies]

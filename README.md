@@ -76,24 +76,23 @@ let axi = import "axi.ncl" in
           name = "prs",
           upstream = "github",
           tool = "list_pull_requests",
-          args = { owner = "$param.owner", repo = "$param.repo", state = "open", limit = 10 },
-          transform = { pick = ["number", "title", "author", "updated_at"] },
+          args = { owner = "$param.owner", repo = "$param.repo", state = "open", per_page = 10 },
+          transform = { pick = ["number", "title", "user.login", "updated_at"] },
         },
         {
           name = "issues",
           upstream = "github",
           tool = "list_issues",
-          args = { owner = "$param.owner", repo = "$param.repo", state = "open", limit = 10 },
+          args = { owner = "$param.owner", repo = "$param.repo", state = "open", per_page = 10 },
           transform = { pick = ["number", "title", "labels", "updated_at"] },
         },
       ],
       aggregates = [
-        { label = "open PRs",    expr = "count($step.prs)" },
-        { label = "open issues", expr = "count($step.issues)" },
+        { label = "open PRs",    value = "count($step.prs)" },
+        { label = "open issues", value = "count($step.issues)" },
       ],
       next_steps = [
-        "get_pull_request {owner} {repo} <number> for PR details",
-        "get_issue {owner} {repo} <number> for issue details",
+        { command = "repo_context {owner} {repo}", description = "refresh repo overview" },
       ],
       empty_message = "No open PRs or issues found.",
     },
@@ -106,7 +105,7 @@ The proxy fans out both steps in parallel and returns TOON-encoded output:
 ```
 3 open PRs | 2 open issues
 
-[3]{author,number,title,updated_at}:
+[3]{login,number,title,updated_at}:
   alice,42,Fix auth timeout,2026-04-10T12:00:00Z
   bob,41,Add retry logic,2026-04-09T08:30:00Z
   carol,40,Update deps,2026-04-07T15:00:00Z
@@ -115,8 +114,7 @@ The proxy fans out both steps in parallel and returns TOON-encoded output:
   [bug],18,Flaky CI,2026-04-10T09:00:00Z
   [enhancement],15,Add dark mode,2026-04-08T11:00:00Z
 
-→ get_pull_request foo bar <number> for PR details
-→ get_issue foo bar <number> for issue details
+→ repo_context {owner} {repo} — refresh repo overview
 ```
 
 ## Key concepts

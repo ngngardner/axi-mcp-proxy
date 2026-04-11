@@ -150,6 +150,9 @@ jobs:
             fs.writeFileSync('npm/axi-mcp-proxy/package.json', JSON.stringify(p, null, 2) + '\n');
           "
 
+      - name: Copy README into npm package
+        run: cp README.md npm/axi-mcp-proxy/README.md
+
       - name: Publish platform packages
         run: |
           for dir in npm/@axi-mcp-proxy/*/; do
