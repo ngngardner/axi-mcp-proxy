@@ -239,4 +239,97 @@ mod tests {
         let output = format(&cfg, &results).unwrap();
         assert!(output.contains("[2]{id}:"));
     }
+
+    #[test]
+    fn test_value_display_multiline_string() {
+        let v = json!("line1\nline2\nline3");
+        assert_eq!(value_display(&v), "3 lines");
+    }
+
+    #[test]
+    fn test_value_display_single_line_string() {
+        let v = json!("hello");
+        assert_eq!(value_display(&v), "hello");
+    }
+
+    #[test]
+    fn test_value_display_integer() {
+        let v = json!(42);
+        assert_eq!(value_display(&v), "42");
+    }
+
+    #[test]
+    fn test_value_display_float() {
+        let v = json!(2.72);
+        assert_eq!(value_display(&v), "2.72");
+    }
+
+    #[test]
+    fn test_value_display_bool() {
+        assert_eq!(value_display(&json!(true)), "true");
+        assert_eq!(value_display(&json!(false)), "false");
+    }
+
+    #[test]
+    fn test_value_display_null() {
+        assert_eq!(value_display(&json!(null)), "null");
+    }
+
+    #[test]
+    fn test_value_display_object() {
+        let v = json!({"a": 1});
+        let d = value_display(&v);
+        assert!(d.contains("\"a\""));
+    }
+
+    #[test]
+    fn test_build_body_with_string_data() {
+        let mut cfg = minimal_tool();
+        cfg.aggregates.clear();
+        let results: HashMap<String, Value> = [("s1".into(), json!("plain text output"))].into();
+        let output = format(&cfg, &results).unwrap();
+        assert!(output.contains("plain text output"));
+    }
+
+    #[test]
+    fn test_build_body_with_bool_data() {
+        let mut cfg = minimal_tool();
+        cfg.aggregates.clear();
+        let results: HashMap<String, Value> = [("s1".into(), json!(true))].into();
+        let output = format(&cfg, &results).unwrap();
+        assert!(output.contains("true"));
+    }
+
+    #[test]
+    fn test_build_body_with_number_data() {
+        let mut cfg = minimal_tool();
+        cfg.aggregates.clear();
+        let results: HashMap<String, Value> = [("s1".into(), json!(99))].into();
+        let output = format(&cfg, &results).unwrap();
+        assert!(output.contains("99"));
+    }
+
+    #[test]
+    fn test_format_no_aggregates_no_next_steps() {
+        let mut cfg = minimal_tool();
+        cfg.aggregates.clear();
+        cfg.next_steps.clear();
+        let results: HashMap<String, Value> = [("s1".into(), json!([{"x": 1}]))].into();
+        let output = format(&cfg, &results).unwrap();
+        assert!(output.contains("[1]{x}:"));
+        assert!(!output.contains('→'));
+    }
+
+    #[test]
+    fn test_truncate_array_non_array() {
+        let v = json!({"a": 1});
+        let result = truncate_array(&v, 5);
+        assert_eq!(result, v);
+    }
+
+    #[test]
+    fn test_is_empty_object() {
+        assert!(is_empty(&json!({})));
+        assert!(!is_empty(&json!({"a": 1})));
+    }
 }

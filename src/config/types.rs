@@ -303,4 +303,80 @@ mod tests {
         let result = AggregateExpr::parse("bad_expr");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_aggregate_expr_count_missing_step_prefix() {
+        let result = AggregateExpr::parse("count(items)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_aggregate_expr_sum_missing_step_prefix() {
+        let result = AggregateExpr::parse("sum(nums)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_auth_type_deserialize() {
+        let cases = [
+            (r#""none""#, AuthType::None),
+            (r#""bearer""#, AuthType::Bearer),
+            (r#""basic""#, AuthType::Basic),
+            (r#""header""#, AuthType::Header),
+        ];
+        for (json, expected) in cases {
+            let got: AuthType = serde_json::from_str(json).unwrap();
+            assert_eq!(got, expected);
+        }
+    }
+
+    #[test]
+    fn test_auth_type_deserialize_invalid() {
+        let result: Result<AuthType, _> = serde_json::from_str(r#""oauth""#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_param_type_display() {
+        assert_eq!(ParamType::String.to_string(), "string");
+        assert_eq!(ParamType::Number.to_string(), "number");
+        assert_eq!(ParamType::Boolean.to_string(), "boolean");
+    }
+
+    #[test]
+    fn test_param_type_deserialize() {
+        let cases = [
+            (r#""string""#, ParamType::String),
+            (r#""number""#, ParamType::Number),
+            (r#""boolean""#, ParamType::Boolean),
+        ];
+        for (json, expected) in cases {
+            let got: ParamType = serde_json::from_str(json).unwrap();
+            assert_eq!(got, expected);
+        }
+    }
+
+    #[test]
+    fn test_param_type_deserialize_invalid() {
+        let result: Result<ParamType, _> = serde_json::from_str(r#""integer""#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_auth_config_defaults() {
+        let cfg: AuthConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(cfg.auth_type, AuthType::None);
+        assert!(cfg.token.is_none());
+        assert!(cfg.headers.is_none());
+    }
+
+    #[test]
+    fn test_default_max_items() {
+        assert_eq!(default_max_items(), 10);
+    }
+
+    #[test]
+    fn test_default_true() {
+        assert!(default_true());
+    }
 }

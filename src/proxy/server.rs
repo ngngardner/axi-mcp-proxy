@@ -366,3 +366,120 @@ fn build_tool_schemas(config: &Config) -> Vec<Tool> {
 
     tools
 }
+
+#[cfg(test)]
+// Tests use unwrap for brevity — panics are the desired failure mode
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn make_text_result(texts: &[&str]) -> CallToolResult {
+        let content = texts
+            .iter()
+            .map(|t| Content::text((*t).to_owned()))
+            .collect();
+        CallToolResult {
+            content,
+            is_error: None,
+        }
+    }
+
+    #[test]
+    fn test_extract_result_json_object() {
+        let result = make_text_result(&[r#"{"key": "val"}"#]);
+        let data = extract_result_data(&result);
+        assert_eq!(data, json!({"key": "val"}));
+    }
+
+    #[test]
+    fn test_extract_result_json_array() {
+        let result = make_text_result(&["[1, 2, 3]"]);
+        let data = extract_result_data(&result);
+        assert_eq!(data, json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn test_extract_result_plain_text() {
+        let result = make_text_result(&["not json at all"]);
+        let data = extract_result_data(&result);
+        assert_eq!(data, json!("not json at all"));
+    }
+
+    #[test]
+    fn test_extract_result_prefers_structured() {
+        let result = make_text_result(&["short", r#"{"a": 1}"#]);
+        let data = extract_result_data(&result);
+        assert_eq!(data, json!({"a": 1}));
+    }
+
+    #[test]
+    fn test_extract_result_prefers_longer_text() {
+        let result = make_text_result(&["ab", "longer text here"]);
+        let data = extract_result_data(&result);
+        assert_eq!(data, json!("longer text here"));
+    }
+
+    #[test]
+    fn test_extract_result_empty() {
+        let result = CallToolResult {
+            content: vec![],
+            is_error: None,
+        };
+        let data = extract_result_data(&result);
+        assert_eq!(data, Value::Null);
+    }
+
+    #[test]
+    fn test_extract_result_scalar_json() {
+        let result = make_text_result(&["42"]);
+        let data = extract_result_data(&result);
+        assert_eq!(data, json!(42));
+    }
+
+    #[test]
+    fn test_build_tool_schemas_includes_builtins() {
+        let config = Config {
+            upstreams: HashMap::new(),
+            tools: HashMap::new(),
+        };
+        let schemas = build_tool_schemas(&config);
+        assert!(schemas.iter().any(|t| t.name == "list_upstream_tools"));
+    }
+
+    #[test]
+    fn test_build_tool_schemas_with_tool() {
+        let mut tools = HashMap::new();
+        tools.insert(
+            "my_tool".to_owned(),
+            crate::config::ToolConfig {
+                description: "A test tool".into(),
+                detailed_help: None,
+                parameters: vec![crate::config::ParamConfig {
+                    name: "owner".into(),
+                    param_type: ParamType::String,
+                    description: "Repo owner".into(),
+                    required: true,
+                }],
+                steps: vec![],
+                output_fields: vec![],
+                aggregates: vec![],
+                next_steps: vec![],
+                empty_message: "none".into(),
+                max_items: 10,
+            },
+        );
+        let config = Config {
+            upstreams: HashMap::new(),
+            tools,
+        };
+        let schemas = build_tool_schemas(&config);
+        let my_tool = schemas.iter().find(|t| t.name == "my_tool").unwrap();
+        assert!(!my_tool.description.is_empty());
+        let schema = &my_tool.input_schema;
+        let props = schema.get("properties").unwrap();
+        assert!(props.get("owner").is_some());
+        assert!(props.get("help").is_some());
+        assert!(props.get("full").is_some());
+    }
+}

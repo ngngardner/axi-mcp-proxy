@@ -172,3 +172,99 @@ fn build_http_client(auth: &AuthConfig) -> Result<reqwest::Client> {
         .build()
         .context("failed to build HTTP client")
 }
+
+#[cfg(test)]
+// Tests use unwrap for brevity — panics are the desired failure mode
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_build_http_client_no_auth() {
+        let auth = AuthConfig::default();
+        let client = build_http_client(&auth);
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_build_http_client_bearer() {
+        let auth = AuthConfig {
+            auth_type: AuthType::Bearer,
+            token: Some("test-token-123".into()),
+            headers: None,
+        };
+        let client = build_http_client(&auth);
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_build_http_client_bearer_no_token() {
+        let auth = AuthConfig {
+            auth_type: AuthType::Bearer,
+            token: None,
+            headers: None,
+        };
+        let client = build_http_client(&auth);
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_build_http_client_basic() {
+        let auth = AuthConfig {
+            auth_type: AuthType::Basic,
+            token: Some("user:pass".into()),
+            headers: None,
+        };
+        let client = build_http_client(&auth);
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_build_http_client_basic_no_token() {
+        let auth = AuthConfig {
+            auth_type: AuthType::Basic,
+            token: None,
+            headers: None,
+        };
+        let client = build_http_client(&auth);
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_build_http_client_header() {
+        let mut h = HashMap::new();
+        h.insert("X-Api-Key".into(), "secret".into());
+        let auth = AuthConfig {
+            auth_type: AuthType::Header,
+            token: None,
+            headers: Some(h),
+        };
+        let client = build_http_client(&auth);
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_build_http_client_header_no_headers() {
+        let auth = AuthConfig {
+            auth_type: AuthType::Header,
+            token: None,
+            headers: None,
+        };
+        let client = build_http_client(&auth);
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn test_client_debug() {
+        let config = UpstreamConfig {
+            url: Some("http://localhost".into()),
+            cmd: None,
+            args: vec![],
+            auth: AuthConfig::default(),
+        };
+        let client = Client::new(config, OsString::new());
+        let debug = format!("{client:?}");
+        assert!(debug.contains("Client"));
+    }
+}
