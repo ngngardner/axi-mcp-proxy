@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rmcp::model::{CallToolResult, Tool};
 use std::collections::HashMap;
+use std::ffi::OsString;
 
 use super::client::Client;
 use crate::config::UpstreamConfig;
@@ -11,10 +12,10 @@ pub struct Pool {
 
 impl Pool {
     #[must_use]
-    pub fn new(upstreams: &HashMap<String, UpstreamConfig>) -> Self {
+    pub fn new(upstreams: &HashMap<String, UpstreamConfig>, ancestry: &OsString) -> Self {
         let clients = upstreams
             .iter()
-            .map(|(name, cfg)| (name.clone(), Client::new(cfg.clone())))
+            .map(|(name, cfg)| (name.clone(), Client::new(cfg.clone(), ancestry.clone())))
             .collect();
         Self { clients }
     }

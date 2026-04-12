@@ -1,10 +1,13 @@
 // Binary entrypoint — stdout/stderr output is intentional for CLI
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+use anyhow::Context;
 use axi_mcp_proxy::{config, proxy, upstream};
 use clap::Parser;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+
+use upstream::client::ANCESTRY_ENV;
 
 #[derive(Parser)]
 #[command(
@@ -38,8 +41,32 @@ struct Cli {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    // Detect circular nesting: check if this config is already in the spawn chain.
+    let canonical = std::fs::canonicalize(&cli.config).unwrap_or_else(|_| {
+        std::path::absolute(&cli.config).unwrap_or_else(|_| cli.config.clone())
+    });
+    let ancestry: Vec<PathBuf> = std::env::var_os(ANCESTRY_ENV)
+        .map(|val| std::env::split_paths(&val).collect())
+        .unwrap_or_default();
+    if ancestry.iter().any(|p| p == &canonical) {
+        let chain: String = ancestry
+            .iter()
+            .map(|p| p.display().to_string())
+            .chain(std::iter::once(canonical.display().to_string()))
+            .collect::<Vec<_>>()
+            .join(" → ");
+        anyhow::bail!(
+            "circular proxy nesting detected: {} already in spawn chain\n  chain: {chain}",
+            canonical.display()
+        );
+    }
+    let mut new_ancestry = ancestry;
+    new_ancestry.push(canonical);
+    let ancestry_env =
+        std::env::join_paths(&new_ancestry).context("failed to encode proxy ancestry")?;
+
     let cfg = config::load(&cli.config)?;
-    let pool = upstream::pool::Pool::new(&cfg.upstreams);
+    let pool = upstream::pool::Pool::new(&cfg.upstreams, &ancestry_env);
     let server = proxy::server::ProxyServer::new(cfg, pool);
 
     // Debug mode: run a single tool and exit

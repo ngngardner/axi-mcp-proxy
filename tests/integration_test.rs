@@ -152,7 +152,7 @@ fn make_config(upstreams: Vec<(&str, SocketAddr)>, tools: HashMap<String, ToolCo
 }
 
 async fn setup_proxy(cfg: Config) -> (SocketAddr, tokio_util::sync::CancellationToken) {
-    let pool = Pool::new(&cfg.upstreams);
+    let pool = Pool::new(&cfg.upstreams, &std::ffi::OsString::new());
     let proxy = ProxyServer::new(cfg, pool);
     let port = find_free_port();
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
@@ -831,7 +831,7 @@ async fn test_list_upstream_tools() {
 
 /// Helper: create a `ProxyServer` directly (no SSE transport needed)
 fn make_proxy(cfg: Config) -> ProxyServer {
-    let pool = Pool::new(&cfg.upstreams);
+    let pool = Pool::new(&cfg.upstreams, &std::ffi::OsString::new());
     ProxyServer::new(cfg, pool)
 }
 

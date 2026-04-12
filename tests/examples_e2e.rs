@@ -61,7 +61,7 @@ fn find_free_port() -> u16 {
 }
 
 async fn setup_proxy(cfg: config::Config) -> (SocketAddr, tokio_util::sync::CancellationToken) {
-    let pool = Pool::new(&cfg.upstreams);
+    let pool = Pool::new(&cfg.upstreams, &std::ffi::OsString::new());
     let proxy = ProxyServer::new(cfg, pool);
     let port = find_free_port();
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();

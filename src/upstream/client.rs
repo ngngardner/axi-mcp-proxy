@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::ffi::OsString;
 
 use anyhow::{Context, Result, bail};
 use rmcp::ServiceExt;
@@ -11,18 +12,24 @@ use tokio::sync::OnceCell;
 
 use crate::config::{AuthConfig, AuthType, UpstreamConfig};
 
+/// Env var tracking the chain of config paths in nested proxy spawns.
+/// Used to detect circular nesting before it becomes a fork bomb.
+pub const ANCESTRY_ENV: &str = "AXI_PROXY_ANCESTRY";
+
 type ClientService = RunningService<rmcp::service::RoleClient, rmcp::model::ClientInfo>;
 
 pub struct Client {
     config: UpstreamConfig,
+    ancestry: OsString,
     service: OnceCell<ClientService>,
 }
 
 impl Client {
     #[must_use]
-    pub fn new(config: UpstreamConfig) -> Self {
+    pub fn new(config: UpstreamConfig, ancestry: OsString) -> Self {
         Self {
             config,
+            ancestry,
             service: OnceCell::new(),
         }
     }
@@ -53,6 +60,7 @@ impl Client {
         if let Some(ref cmd) = self.config.cmd {
             let mut command = tokio::process::Command::new(cmd);
             command.args(&self.config.args);
+            command.env(ANCESTRY_ENV, &self.ancestry);
             #[cfg(windows)]
             {
                 command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
