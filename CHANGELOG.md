@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/ngngardner/axi-mcp-proxy/compare/v0.3.1...v0.4.0) (2026-04-12)
+
+
+### Features
+
+* add nested proxy composition example ([f8b29de](https://github.com/ngngardner/axi-mcp-proxy/commit/f8b29ded66f872e8e7f63030868e825f5163a3fd))
+* resolve missing params gracefully instead of erroring ([c519f57](https://github.com/ngngardner/axi-mcp-proxy/commit/c519f5755562f1830d292009056aaca8bb16df8e))
+
+
+### Bug Fixes
+
+* detect circular proxy nesting via ancestry env var ([b8afa8b](https://github.com/ngngardner/axi-mcp-proxy/commit/b8afa8b44564a5274b403bf3112ff79d03c9dbc6))
+
 ## [0.3.1](https://github.com/ngngardner/axi-mcp-proxy/compare/v0.3.0...v0.3.1) (2026-04-11)
 
 
