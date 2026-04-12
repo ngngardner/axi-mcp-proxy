@@ -60,12 +60,12 @@ fn resolve_string(
         && !raw_name.contains("$param.")
         && !raw_name.contains("$step.")
     {
-        let (name, optional) = parse_optional(raw_name);
-        return match params.get(name) {
-            Some(v) => Ok(v.clone()),
-            None if optional => Ok(Value::Null),
-            None => Err(anyhow::anyhow!("unknown parameter: {name}")),
-        };
+        let (name, _optional) = parse_optional(raw_name);
+        // Missing param → null (dropped by resolve_args retain),
+        // so upstream runs with no value — principle 5: definitive empty state
+        return params
+            .get(name)
+            .map_or_else(|| Ok(Value::Null), |v| Ok(v.clone()));
     }
     if let Some(path) = s.strip_prefix("$step.")
         && !path.contains("$param.")
@@ -98,11 +98,9 @@ fn interpolate_string(
             rest = &rest[pos..];
 
             if let Some(raw_name) = try_extract_ref(rest, "$param.") {
-                let (name, optional) = parse_optional(raw_name);
-                match params.get(name) {
-                    Some(val) => output.push_str(&value_to_string(val)),
-                    None if optional => {} // absent optional → empty string
-                    None => return Err(anyhow::anyhow!("unknown parameter: {name}")),
+                let (name, _optional) = parse_optional(raw_name);
+                if let Some(val) = params.get(name) {
+                    output.push_str(&value_to_string(val));
                 }
                 rest = &rest["$param.".len() + raw_name.len()..];
             } else if let Some(path) = try_extract_ref(rest, "$step.") {
@@ -225,17 +223,12 @@ mod tests {
     }
 
     #[test]
-    fn test_unknown_param() {
+    fn test_missing_param_resolves_to_null_and_dropped() {
         let args: HashMap<String, Value> = [("x".to_string(), json!("$param.missing"))].into();
-        let params = HashMap::new();
-        let results = HashMap::new();
-        let result = resolve_args(&args, &params, &results);
-        assert!(result.is_err());
+        let resolved = resolve_args(&args, &HashMap::new(), &HashMap::new()).unwrap();
         assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("unknown parameter")
+            !resolved.contains_key("x"),
+            "missing param should resolve to null and be dropped"
         );
     }
 
@@ -348,17 +341,11 @@ mod tests {
     }
 
     #[test]
-    fn test_interpolation_unknown_param() {
+    fn test_interpolation_missing_param_becomes_empty() {
         let args: HashMap<String, Value> =
             [("x".to_string(), json!("prefix/$param.missing/suffix"))].into();
-        let result = resolve_args(&args, &HashMap::new(), &HashMap::new());
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("unknown parameter")
-        );
+        let resolved = resolve_args(&args, &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(resolved["x"], json!("prefix//suffix"));
     }
 
     #[test]
@@ -404,15 +391,12 @@ mod tests {
     }
 
     #[test]
-    fn test_required_param_still_errors() {
+    fn test_missing_required_param_resolves_gracefully() {
         let args: HashMap<String, Value> = [("x".to_string(), json!("$param.x"))].into();
-        let result = resolve_args(&args, &HashMap::new(), &HashMap::new());
-        assert!(result.is_err());
+        let resolved = resolve_args(&args, &HashMap::new(), &HashMap::new()).unwrap();
         assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("unknown parameter")
+            !resolved.contains_key("x"),
+            "missing required param should resolve to null and be dropped"
         );
     }
 

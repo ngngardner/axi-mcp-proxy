@@ -1,7 +1,7 @@
 // End-to-end smoke tests for example configs.
 //
 // Discovers examples/*/config.ncl, checks upstream availability,
-// spawns the proxy, and calls each tool with {"help": true}.
+// spawns the proxy, and calls each tool with {} (empty params).
 // Skips examples whose upstreams aren't available.
 #![allow(
     clippy::tests_outside_test_module,
@@ -17,7 +17,6 @@ use axi_mcp_proxy::proxy::server::ProxyServer;
 use axi_mcp_proxy::upstream::pool::Pool;
 use rmcp::ServiceExt;
 use rmcp::model::*;
-use serde_json::json;
 use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -71,7 +70,7 @@ async fn setup_proxy(cfg: config::Config) -> (SocketAddr, tokio_util::sync::Canc
     (addr, ct)
 }
 
-async fn call_tool_help(addr: SocketAddr, tool: &str) -> (String, bool) {
+async fn call_tool_empty(addr: SocketAddr, tool: &str) -> (String, bool) {
     let transport = rmcp::transport::SseTransport::start(format!("http://{addr}/sse"))
         .await
         .expect("connect to proxy");
@@ -88,10 +87,7 @@ async fn call_tool_help(addr: SocketAddr, tool: &str) -> (String, bool) {
 
     let param = CallToolRequestParam {
         name: Cow::Owned(tool.to_string()),
-        arguments: Some(serde_json::Map::from_iter([(
-            "help".to_string(),
-            json!(true),
-        )])),
+        arguments: Some(serde_json::Map::new()),
     };
     let result = peer.call_tool(param).await.expect("call tool");
 
@@ -146,7 +142,7 @@ async fn examples_e2e_smoke() {
         let (proxy_addr, _ct) = setup_proxy(cfg).await;
 
         for tool in &tool_names {
-            let (text, is_error) = call_tool_help(proxy_addr, tool).await;
+            let (text, is_error) = call_tool_empty(proxy_addr, tool).await;
             assert!(
                 !is_error,
                 "examples/{name}: tool {tool:?} returned error: {text}"
