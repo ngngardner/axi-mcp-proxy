@@ -1,3 +1,6 @@
+# Full multi-tool config used by axi-mcp-proxy itself.
+# Demonstrates: cmd-based upstreams, multiple tools with parameters,
+# transforms (pick, truncate), shell command integration, aggregates.
 let axi = import "axi.ncl" in
 {
   upstreams = {
