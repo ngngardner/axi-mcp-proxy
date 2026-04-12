@@ -1,3 +1,6 @@
+# URL-based upstream with bearer auth.
+# Demonstrates: env var expansion (${GITHUB_TOKEN}), transform with pick fields,
+# hidden output fields (default_visible = false).
 let axi = import "axi.ncl" in
 {
   upstreams = {
