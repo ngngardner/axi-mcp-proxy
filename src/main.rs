@@ -35,6 +35,13 @@ struct Cli {
     /// JSON params for --run-tool (default: {})
     #[arg(long, default_value = "{}")]
     params: String,
+
+    /// Load + validate the config and exit. No transport, no upstream calls.
+    /// Exits non-zero with the load error on stderr if validation fails.
+    /// Intended for build-time / CI checks where a bad .ncl should never
+    /// reach a deployed agent.
+    #[arg(long)]
+    check: bool,
 }
 
 #[tokio::main]
@@ -66,6 +73,15 @@ async fn main() -> anyhow::Result<()> {
         std::env::join_paths(&new_ancestry).context("failed to encode proxy ancestry")?;
 
     let cfg = config::load(&cli.config)?;
+
+    // --check: load+validate only, no transport, no upstream calls.
+    // Intentionally returns before pool/server construction so this stays
+    // safe to invoke in hermetic build sandboxes with no network.
+    if cli.check {
+        eprintln!("config OK: {}", cli.config.display());
+        return Ok(());
+    }
+
     let pool = upstream::pool::Pool::new(&cfg.upstreams, &ancestry_env);
     let server = proxy::server::ProxyServer::new(cfg, pool);
 
