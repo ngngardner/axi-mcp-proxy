@@ -980,7 +980,7 @@ fn wire_upstream(bun_path: &str) -> Config {
             UpstreamConfig {
                 url: None,
                 cmd: Some(bun_path.to_string()),
-                args: vec!["x".into(), "mcp-server-everything".into()],
+                args: vec!["x".into(), "@modelcontextprotocol/server-everything".into()],
                 auth: AuthConfig::default(),
             },
         )]),
