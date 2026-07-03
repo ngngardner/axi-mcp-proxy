@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/ngngardner/axi-mcp-proxy/compare/v0.4.0...v0.4.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **engine:** optional param refs resolve to empty string when absent ([651bd4b](https://github.com/ngngardner/axi-mcp-proxy/commit/651bd4b7baa81794a037c2bd618c15758fe4093b))
+
 ## [0.4.0](https://github.com/ngngardner/axi-mcp-proxy/compare/v0.3.1...v0.4.0) (2026-05-12)
 
 
