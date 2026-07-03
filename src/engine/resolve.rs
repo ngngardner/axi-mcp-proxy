@@ -60,12 +60,21 @@ fn resolve_string(
         && !raw_name.contains("$param.")
         && !raw_name.contains("$step.")
     {
-        let (name, _optional) = parse_optional(raw_name);
-        // Missing param → null (dropped by resolve_args retain),
+        let (name, optional) = parse_optional(raw_name);
+        // Missing optional (`?`) param → empty string, so positional argv
+        // arrays keep their arity instead of carrying a null element.
+        // Missing non-optional param → null (dropped by resolve_args retain),
         // so upstream runs with no value — principle 5: definitive empty state
-        return params
-            .get(name)
-            .map_or_else(|| Ok(Value::Null), |v| Ok(v.clone()));
+        return params.get(name).map_or_else(
+            || {
+                if optional {
+                    Ok(Value::String(String::new()))
+                } else {
+                    Ok(Value::Null)
+                }
+            },
+            |v| Ok(v.clone()),
+        );
     }
     if let Some(path) = s.strip_prefix("$step.")
         && !path.contains("$param.")
@@ -359,10 +368,35 @@ mod tests {
     fn test_optional_param_absent() {
         let args: HashMap<String, Value> = [("ft".to_string(), json!("$param.file_type?"))].into();
         let resolved = resolve_args(&args, &HashMap::new(), &HashMap::new()).unwrap();
-        assert!(
-            !resolved.contains_key("ft"),
-            "absent optional param should be dropped"
+        assert_eq!(
+            resolved["ft"],
+            json!(""),
+            "absent optional param should resolve to empty string"
         );
+    }
+
+    #[test]
+    fn test_optional_param_absent_in_argv_array_keeps_arity() {
+        let args: HashMap<String, Value> = [(
+            "args".to_string(),
+            json!(["boti-add-event", "$param.slug", "$param.mission?"]),
+        )]
+        .into();
+        let params: HashMap<String, Value> = [("slug".to_string(), json!("test-event"))].into();
+        let resolved = resolve_args(&args, &params, &HashMap::new()).unwrap();
+        assert_eq!(
+            resolved["args"],
+            json!(["boti-add-event", "test-event", ""]),
+            "absent optional param in argv must become \"\", not null, to preserve positions"
+        );
+    }
+
+    #[test]
+    fn test_required_param_absent_in_argv_array_stays_null() {
+        let args: HashMap<String, Value> =
+            [("args".to_string(), json!(["cmd", "$param.slug"]))].into();
+        let resolved = resolve_args(&args, &HashMap::new(), &HashMap::new()).unwrap();
+        assert_eq!(resolved["args"], json!(["cmd", null]));
     }
 
     #[test]
